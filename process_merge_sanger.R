@@ -36,7 +36,7 @@ nc_merged_seqs_sub <- nc_merged_seqs %>% select(seqName, aaSubstitutions)
 
 ## Merge the files to see if all mutations on the left are present on the right
 nc_sanger_seqs_compare <- inner_join(nc_sanger_seqs_sub, nc_merged_seqs_sub, by = "seqName")
-nc_sanger_seqs_compare_full <- full_join(nc_sanger_seqs_sub, nc_merged_seqs_sub, by = "seqName")
+nc_sanger_seqs_compare_full <- full_join(nc_sanger_seqs_sub, nc_merged_seqs, by = "seqName")
 
 ## Save report to excel
 write_xlsx(nc_sanger_seqs_compare, paste0(wd, "/nc_merge_report.xlsx"))
