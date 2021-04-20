@@ -652,12 +652,12 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
 
 
 @click.command()
-@click.option("-sa_ab1", help="ab1 folder or sanger sequence file", type=str, default="/home/devil/Documents/San/Corona/Merging/Sanger/12April2021", show_default=True) # Convert this to folder
+@click.option("-sa_ab1", help="ab1 folder or sanger sequence file", type=str, default="ab1", show_default=True) # Convert this to folder
 # @click.option("-fa", help="Fasta output file. If not given, only sequences will be printed in terminal", 
 #               type=str, default=None, show_default=True)
 
 @click.option("-asf", help="Assemblies folder containing fasta files", 
-              type=str, default="/home/devil/Documents/San/Corona/Merging/Sanger/assemblies", show_default=True)
+              type=str, default="assemblies", show_default=True)
 # @click.option("-rf", help="Reference fasta", 
 #               type=bool, default=False, show_default=True)
 @click.option("-bs", help="Base replacement methos", 
