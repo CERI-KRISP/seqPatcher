@@ -415,10 +415,61 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
     output_file = open(outfile, "w")
 
     for fls in infiles:
-        print(fls)
+        
         if fls[0].endswith(".fasta"):
-            for rec in SeqIO.parse(fl, "fasta"):
+            fout = path.split(fls[0])[1]+".psl"
+            fout = f"{tmp_fold}/{fout}"
+            command = ["blat", "-noHead", f"{tmp_fold}/CoVid_S_Gene.fasta",fls[0],  fout]
+
+            cmd(command)
+            df = pd.read_table(fout, header=None)
+            df = df.sort_values(0, ascending=False).drop_duplicates(9)
+             
+            
+            sequences = {}
+            for rec in SeqIO.parse(fls[0], "fasta"):
                     sequences[rec.id] = rec.seq
+            for rec in SeqIO.parse(f"{tmp_fold}/CoVid_S_Gene.fasta", "fasta"):
+                sequences[rec.id] = rec.seq
+            # print(df)
+            #TODO: Collect the details based
+            
+            for _, row in df.iterrows():
+                if row[8]=='-':
+                    sequences[row[9]] = sequences[row[9]].reverse_complement()
+                
+                if row[17] == 1:
+                    output_file.write(f">{row[9]} {row[15]} {row[16]}\n{sequences['ref'][:row[15]]+sequences[row[9]][row[11]:row[12]]+sequences['ref'][row[16]:]}\n")
+                    
+                else:
+                    
+                    tstarts  = np.array(list(map(int,row[20][:-1].split(","))))
+                    qstarts  = np.array(list(map(int,row[19][:-1].split(","))))
+                    blocks = np.array(list(map(int,row[18][:-1].split(","))))
+                    
+                    qends = qstarts + blocks
+                    tends = tstarts +blocks
+                    # print(qends)
+                    begins = sequences['ref'][:row[15]]
+                    ends = sequences['ref'][row[16]:]
+                    mseq = ""
+                    for i in range(row[17]-1):
+                        qgap = qstarts[i+1] - qends[i]
+                        tgap = tstarts[i+1] - tends[i]
+                        mseq += sequences[row[9]][qstarts[i]:qends[i]]
+                        
+                        if qgap:
+                            if (qgap > 9) or (qgap % 3):
+                                mseq += sequences["ref"][tends[i]:tstarts[i+1]]
+                            else:
+                                mseq += "-"*qgap
+                        else:
+                            if (tgap > 9) or (tgap % 3):
+                                mseq += "-"*tgap
+                            else:
+                                mseq += sequences[row[9]][qends[i]:qstarts[i+1]]
+                    output_file.write(f">{row[9]} {row[15]} {row[16]}\n{begins+mseq+ends}\n")
+
             is_fasta = True
 
         else:
@@ -443,10 +494,10 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
             for n in ["1", "2"]:
                 cl = f"{n}_nuc"
                 if cl in aln_with_peak.columns:
-                    print(cl)
-                    print(aln_with_peak.loc[pd.isnull(aln_with_peak[cl])].loc[1294:1299])
+                    # print(cl)
+                    # print(aln_with_peak.loc[pd.isnull(aln_with_peak[cl])].loc[1294:1299])
                     aln_with_peak.loc[pd.isnull(aln_with_peak[cl]),cl] = "-"
-                    print(aln_with_peak.loc[1294:1299])
+                    # print(aln_with_peak.loc[1294:1299])
             # print("".join(aln_with_peak["ref"].values))
             # print(aln_with_peak[["ref","2_nuc","1_nuc"]].apply(set, axis=1))
             aln_with_peak, u_range = aln_clean(aln_with_peak)
@@ -461,9 +512,9 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
                         # print("Kiran", aln_with_peak.loc[us[0]:us[1]])
                 # exit(f"Contact Anmol with {fls}")
             # print(aln_with_peak[aln_with_peak[["ref", "1_nuc", "2_nuc"]].apply(lambda x: True if '-' in list(x.values) else False, axis=1)].index)
-            print(aln_with_peak, u_range)
+            # print(aln_with_peak, u_range)
             seq = "".join(aln_with_peak["rep"].values)
-            print(seq)
+            # print(seq)
             output_file.write(f">{flb} {u_range[0]} {u_range[1]}\n{seq}\n")
     output_file.close()
             # return , u_range
@@ -653,19 +704,20 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
 
 @click.command()
 @click.option("-sa_ab1", help="ab1 folder or sanger sequence file", type=str, default="ab1", show_default=True) # Convert this to folder
+# "/home/devil/Documents/San/Corona/Merging/Sanger/12April2021"
 # @click.option("-fa", help="Fasta output file. If not given, only sequences will be printed in terminal", 
 #               type=str, default=None, show_default=True)
 
 @click.option("-asf", help="Assemblies folder containing fasta files", 
-              type=str, default="assemblies", show_default=True)
+              type=str, default="assemblies", show_default=True) # /home/devil/Documents/San/Corona/Merging/Sanger/
 # @click.option("-rf", help="Reference fasta", 
 #               type=bool, default=False, show_default=True)
-@click.option("-bs", help="Base replacement methos", 
-              type=click.Choice([None, "max", "neigh", "ref"]), default=None, show_default=True)
+# @click.option("-bs", help="Base replacement methos", 
+#               type=click.Choice([None, "max", "neigh", "ref"]), default=None, show_default=True)
 @click.option("-outd", help="Output Folder", 
               type=str, default="Results", show_default=True)
 
-def run(sa_ab1, asf, bs, outd):# , fa, asb, al, bs
+def run(sa_ab1, asf,  outd):# , fa, asb, al, bs
     """
     Convert ab1 to Fasta based given parameters. must contain original sequence name., Must me N trimmed at the end
     work when either ab1 or sa parameter given. Must have ab1 files with ab1 suffix with sequence name as prefix\n
@@ -761,11 +813,11 @@ GGAGTCAAATTACATTACACATAA"""
     for fl in sanger_files:
         flx = path.split(fl)[1]
         if flx.endswith(".fasta"):
-            n_seq = 0
-            for _ in SeqIO.parse(flx, "fasta"):
-                n_seq += 1
-            if n_seq != 1:
-                exit(f"{flx} has {n_seq} sequences. Expecting 1. Exiting . . . . . .")
+            # n_seq = 0
+            # for _ in SeqIO.parse(fl, "fasta"):
+            #     n_seq += 1
+            # if n_seq != 1:
+            #     exit(f"{flx} has {n_seq} sequences. Expecting 1. Exiting . . . . . .")
             flb = flx.split(".fasta")[0]
         elif flx.endswith(".ab1"):
             flb = flx.split("_")[0] # Fist part should be the name
@@ -788,11 +840,12 @@ GGAGTCAAATTACATTACACATAA"""
 
     @merge(sanger_outputs, f"{tmp_fold}/sanger.fasta") # Apply merge it. Ignore  if it fails to include
     def sanger_seq_r(inputfiles, outputfile):
+        print(inputfiles)
         ab2fasta(inputfiles, outputfile)
     
     
     
-    
+    @mkdir(outd)
     @transform(assemblies, formatter(".+/(?P<filebase>\w+)"),add_inputs(sanger_seq_r), "%s/{filebase[0]}.fasta" % outd)
     def alignments(infiles, outfile):
         # print(infiles,outfiles)
@@ -810,13 +863,13 @@ GGAGTCAAATTACATTACACATAA"""
 
         flb = path.split(assembly)[1].split(".fasta")[0]
         command = ["blat", "-noHead", assembly, sang_file, f"{tmp_fold}/{flb}.psl"]
-        # cmd(command)
+        cmd(command)
         df = pd.read_table(f"{tmp_fold}/{flb}.psl", header=None)
         # print(df[df[9]==df[13]].sort_values(0, ascending=False))
         df = df[df[9]==df[13]].sort_values(0, ascending=False).drop_duplicates(9)
-        print(df)
+        
         for _, row in df.iterrows():
-            # print(sanger_seq_desc[row[9]].split())
+            print(row)
             start, end = list(map(int, sanger_seq_desc[row[9]].split()[1:]))
             if row[11] == 0:
                 
@@ -825,8 +878,16 @@ GGAGTCAAATTACATTACACATAA"""
             elif row[12] == row[10]:
                 org_seq[row[9]] = org_seq[row[9]][:row[16]-(row[10]-start)]+sanger_seq[row[9]][start:end+1]+org_seq[row[9]][row[16]-(row[10]-end-1):]
             else:
-                exit("Contact Anmol")# TODO: Update
+                if start >= row[11]:
+                    org_seq[row[9]] = org_seq[row[9]][:row[15]+start]+sanger_seq[row[9]][start:end+1]+org_seq[row[9]][row[15]+end+1:]
+                elif end < row[10]:
+                    org_seq[row[9]] = org_seq[row[9]][:row[16]-(row[10]-start)]+sanger_seq[row[9]][start:end+1]+org_seq[row[9]][row[16]-(row[10]-end-1):]
+                else:
+                    
+                    print("You Idiot")
+                    exit("Contact Anmol")# TODO: Update
             pass
+        print(df)
         with open(outfile, "w") as fout:
             for k in org_seq:
                 print(k, len(org_seq[k]))

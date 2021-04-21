@@ -71,12 +71,12 @@ The script integrates the sanger sequenced SARS-CoV-2 S-gene into HTS based gene
 
 # TODOs
 
-- [] Code cleaning
-- [] Testing
-- [] Clean intermediate files
-- [] Start over option
-- [] Bug Fixes
-- [] fix bs option after discussion with San
+- [ ] Code cleaning
+- [ ] Testing
+- [ ] Clean intermediate files
+- [ ] Start over option
+- [ ] Bug Fixes
+- [ ] fix bs option after discussion with San
 
 # License
 
