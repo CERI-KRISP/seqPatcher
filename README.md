@@ -63,7 +63,6 @@ The script integrates the sanger sequenced SARS-CoV-2 S-gene into HTS based gene
 |-|Any base|-|
 |Base A|-|Base A|
 |Base A|Base B|Base B|
-|Base A|FastaNucleotides|Selected|
 |Base A|Ambi|Base A|
 
 

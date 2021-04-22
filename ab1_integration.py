@@ -354,13 +354,27 @@ def merge_base_peak(df, peak_dict):
 
 
 def aln_clean(df):
+    # print(df.shape, "Anmol")
     one_side = ["1"]
-    if df.shape[1] == 4:
+    if df.shape[1] == 5:
         idx = df[df["1_nuc"]!="-"].index
     else:
         one_side.append("2")
         idx = df[~((df["1_nuc"]=="-") | (df["2_nuc"]=="-"))].index
-    u_range = useful_range(list(idx), 10) # Add the importnat gap. Default: 10
+    u_range = list(useful_range(list(idx), 10)) # Add the importnat gap. Default: 10
+    # print(u_range)
+    if len(one_side) == 1:
+        # Avoid erroneous alignments at the end
+        t = df.loc[u_range[0]:u_range[0]+8]
+        # print(t)
+        if list(t["1_nuc"].values) != list(t["ref"].values):
+            df.loc[u_range[0]:u_range[0]+8, "1_nuc"] = "-"
+            u_range[0] += 9
+        t = df.loc[u_range[1]-8:u_range[1]]
+        if list(t["1_nuc"].values) != list(t["ref"].values):
+            df.loc[u_range[1]-8:u_range[1], "1_nuc"] = "-"
+            u_range[1] -= 9
+        
     for col in df.columns:
         if col=="ref":continue
         df.loc[~df.index.isin(list(range(u_range[0],u_range[1]+1))), col] = "-"
@@ -385,15 +399,29 @@ def aln_clean(df):
                  return lst["2_nuc"]
         
     def rep_single_base(lst):
+        # print(lst)
         if lst["ref"] == "-":
             return "-"
-        elif lst["1_nuc"] == "-":
+        elif (lst["1_nuc"] == "-") or (lst["1_nuc"] == lst["ref"]):
             return lst["ref"]
         elif lst["1_nuc"] not in 'ACGT-':
-            pass
+            sl = "ref"
+            if sl=="ref":
+                return lst["ref"]
+        else:
+            return lst["1_nuc"]
+            # elif sl=="maxpeak":
+            #     pass
+            # # TODO: Need to be corrected
+            # pass
             # TODO: Set statistical parameters
 #         else:
-    df["rep"] = df.apply(rep_paired_base, axis=1)
+    
+    if len(one_side) > 1:
+        df["rep"] = df.apply(rep_paired_base, axis=1)
+    else:
+        df["rep"] = df.apply(rep_single_base, axis=1)
+    print("".join(df["rep"].values))
     return df, u_range
             
         
@@ -489,7 +517,7 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
                 ab1seq_dfs[k].columns = [f"{k}_{col}" for col in ab1seq_dfs[k].columns]
 
             aln_with_peak = merge_base_peak(aln_df_with_ref(tsequences, flb, tmp_fold), ab1seq_dfs)
-            xx = aln_with_peak.loc[1294:1299]
+            # xx = aln_with_peak.loc[1294:1299]
             # print(xx[pd.isnull(xx["1_nuc"])], "SSSSSSSS")
             for n in ["1", "2"]:
                 cl = f"{n}_nuc"
@@ -502,18 +530,24 @@ def ab2fasta(infiles, outfile, bc="neigh"): # Base criteria, max, neighbors, mix
             # print(aln_with_peak[["ref","2_nuc","1_nuc"]].apply(set, axis=1))
             aln_with_peak, u_range = aln_clean(aln_with_peak)
             # print(aln_with_peak.loc[1294:1299], u_range)
-            usr = useful_short_range(aln_with_peak[aln_with_peak[["ref", "1_nuc", "2_nuc"]].apply(lambda x: True if '-' in list(x.values) else False, axis=1)].index, 10)
-            # print(usr)
+            if "2_nuc" in aln_with_peak.columns:
+                usr = useful_short_range(aln_with_peak[aln_with_peak[["ref", "1_nuc", "2_nuc"]].apply(lambda x: True if '-' in list(x.values) else False, axis=1)].index, 10)# TODO Idiot fix it
+            else:
+                usr = useful_short_range(aln_with_peak[aln_with_peak[["ref", "1_nuc"]].apply(lambda x: True if '-' in list(x.values) else False, axis=1)].index, 10)# TODO Idiot fix it
+            # print(aln_with_peak)
             if usr:
                 for us in usr:
                     # print(aln_with_peak.loc[us[0]:us[1], "1_nuc"].values)
-                    if "".join(aln_with_peak.loc[us[0]:us[1], "1_nuc"].values) == "".join(aln_with_peak.loc[us[0]:us[1], "2_nuc"].values):
-                        aln_with_peak.loc[us[0]:us[1], "rep"]= aln_with_peak.loc[us[0]:us[1], "1_nuc"].values
+                    if "2_nuc" in aln_with_peak.columns:
+                        if "".join(aln_with_peak.loc[us[0]:us[1], "1_nuc"].values) == "".join(aln_with_peak.loc[us[0]:us[1], "2_nuc"].values):
+                            aln_with_peak.loc[us[0]:us[1], "rep"]= aln_with_peak.loc[us[0]:us[1], "1_nuc"].values
+                    else:
+                        aln_with_peak.loc[us[0]:us[1], "rep"]= aln_with_peak.loc[us[0]:us[1], "ref"].values
                         # print("Kiran", aln_with_peak.loc[us[0]:us[1]])
                 # exit(f"Contact Anmol with {fls}")
             # print(aln_with_peak[aln_with_peak[["ref", "1_nuc", "2_nuc"]].apply(lambda x: True if '-' in list(x.values) else False, axis=1)].index)
-            # print(aln_with_peak, u_range)
-            seq = "".join(aln_with_peak["rep"].values)
+            # print("".join(map(str, aln_with_peak["rep"].values)))
+            seq = "".join(list(aln_with_peak["rep"].values))
             # print(seq)
             output_file.write(f">{flb} {u_range[0]} {u_range[1]}\n{seq}\n")
     output_file.close()
@@ -840,7 +874,7 @@ GGAGTCAAATTACATTACACATAA"""
 
     @merge(sanger_outputs, f"{tmp_fold}/sanger.fasta") # Apply merge it. Ignore  if it fails to include
     def sanger_seq_r(inputfiles, outputfile):
-        print(inputfiles)
+        # print(inputfiles)
         ab2fasta(inputfiles, outputfile)
     
     
@@ -869,7 +903,7 @@ GGAGTCAAATTACATTACACATAA"""
         df = df[df[9]==df[13]].sort_values(0, ascending=False).drop_duplicates(9)
         
         for _, row in df.iterrows():
-            print(row)
+            # print(row)
             start, end = list(map(int, sanger_seq_desc[row[9]].split()[1:]))
             if row[11] == 0:
                 
@@ -884,13 +918,13 @@ GGAGTCAAATTACATTACACATAA"""
                     org_seq[row[9]] = org_seq[row[9]][:row[16]-(row[10]-start)]+sanger_seq[row[9]][start:end+1]+org_seq[row[9]][row[16]-(row[10]-end-1):]
                 else:
                     
-                    print("You Idiot")
-                    exit("Contact Anmol")# TODO: Update
-            pass
-        print(df)
+                    print("You Idiot Contact Anmol")
+                    exit()# TODO: Update
+        #     pass
+        # print(df)
         with open(outfile, "w") as fout:
             for k in org_seq:
-                print(k, len(org_seq[k]))
+                # print(k, len(org_seq[k]))
                 fout.write(f">{k}\n{org_seq[k]}\n")
             
         #     df
