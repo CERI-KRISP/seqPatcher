@@ -5,7 +5,7 @@ The script integrates the sanger sequenced SARS-CoV-2 S-gene into HTS based gene
 
 # Dependencies
 
-## External
+## External (non-Python)
 
 - MUSCLE
 - BLAT
