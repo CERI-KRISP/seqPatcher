@@ -17,6 +17,20 @@ The script integrates the sanger sequenced SARS-CoV-2 S-gene into HTS based gene
 - click
 - Ruffus
 
+## File and sequence naming
+
+- Assembly files should be written as <sample_name>.fasta
+- If all the assemblies are in one file, name can be anything with fasta
+extension.
+
+- ab1 file should be named as <sample_name>.<F/R>.ab1
+
+- If user already has as sanger fasta it should be named as
+<sample_name>.U.fasta. Where U can be anything not containing '.'.
+    - Sequence name should be as <sample_name>
+
+
+
 
 # Execution
 
@@ -29,7 +43,7 @@ The script integrates the sanger sequenced SARS-CoV-2 S-gene into HTS based gene
 
 # Base selection
 
-- **Note**: Below cases are valid when InDel are smaller than 10 and not multiple of three 
+- **Note**: Below cases are valid when InDel are smaller than 10 and not multiple of three
 ## Paired ab1
 
 |Ref|Forward|Reverse|Final Outcome|
