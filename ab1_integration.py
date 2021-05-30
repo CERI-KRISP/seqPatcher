@@ -7,25 +7,35 @@
 
 
 import subprocess as sb
+import sys
 from collections import defaultdict
 from glob import glob
 from os import makedirs, path
-import sys
+
 import click
 import numpy as np
 import pandas as pd
 from Bio import Seq, SeqIO
-from ruffus import (merge, mkdir, transform, formatter, add_inputs,
-                    pipeline_run, pipeline_printout_graph)  # 2.8.4
+from ruffus import mkdir  # 2.8.4
+from ruffus import (
+    add_inputs,
+    formatter,
+    merge,
+    pipeline_printout_graph,
+    pipeline_run,
+    transform,
+)
 
 
 def cmd(command):
     """Runs all the command using Popen communicate."""
     sb.Popen(command, stdout=sb.DEVNULL).communicate()
+
+
 # , stderr=sb.DEVNULL
 
 
-def ranges(lst, gap=1):
+def ranges(lst, given_gap=0):
     """
     A generator returns list of range based on given numbers
     [1,2,3,4,5, 10, 11, 12, 13, 14] => [[1,5], [10,14]]
@@ -33,39 +43,28 @@ def ranges(lst, gap=1):
     lst_sorted = sorted(lst)
     init = 0
     for num in range(1, len(lst_sorted)):
-        if lst_sorted[num] > gap + lst_sorted[num - 1]:
+        reported_gap = lst_sorted[num] - lst_sorted[num - 1] - 1
+        if (lst_sorted[num] > given_gap + 1 + lst_sorted[num - 1]) or (
+            reported_gap % 3 != 0
+        ):
+            # gap=0 means overlapping
             yield (lst_sorted[init], lst_sorted[num - 1])
             init = num
     yield (lst_sorted[init], lst_sorted[-1])
 
 
-def useful_short_range(lst, gap=10):
-    """Generates a continuous range for from list of number and allow a give
-    length of gap between continuous range and merge them in one.
-    [1,2,3,4,5, 10, 11, 12, 13, 14] => [[1, 14]] if gap allowed is >5
-    [1,2,3,4,5, 10, 11, 12, 13, 14] => [[1,5], [10,14]] if gap allowed is < 5
-    """
-
-    trange = list(ranges(lst))
-
-    myrange = []
-    for rng in trange:
-        gap_len = rng[1] - rng[0] + 1
-        if (gap_len < gap) and gap_len % 3 == 0:
-            myrange.append(rng)
-    return myrange
-
-
 def useful_range(lst, gap=10):
-    """Returns max length of the range."""
+    """Returns first occurance maximum length block range."""
+    # TODO: Check with other that if they are happy with it
+    # or they want other fragment to be selected
 
     trange = list(ranges(lst, gap))
-    pre_gap_len = 0
+    pre_frag_len = 0
     myrange = trange[0]
     for rng in trange:
-        gap_len = rng[1] - rng[0] + 1
-        if pre_gap_len < gap_len:
-            pre_gap_len = gap_len
+        frag_len = rng[1] - rng[0] + 1
+        if pre_frag_len < frag_len:
+            pre_frag_len = frag_len
             myrange = rng
     return myrange
 
@@ -120,7 +119,7 @@ def ab1seq(infile, tmp_fold):
 
     for channel in zip(
         record.annotations["abif_raw"]["PBAS1"],
-        record.annotations["abif_raw"]["PLOC1"]
+        record.annotations["abif_raw"]["PLOC1"],
     ):
         ambi_base = chr(channel[0])
         nuc_df["nuc"].append(ambi_base)
@@ -201,8 +200,9 @@ def merge_base_peak(nuc_df, peak_dict):
         peak_dict[nuc][f"{nuc}_idx"] = list(
             nuc_df[nuc_df[f"{nuc}"] != "-"].index
         )  # list(range(len(peak_dict[k]))
-        nuc_df = nuc_df.merge(peak_dict[nuc], left_on="idx",
-                              right_on=f"{nuc}_idx", how="outer")
+        nuc_df = nuc_df.merge(
+            peak_dict[nuc], left_on="idx", right_on=f"{nuc}_idx", how="outer"
+        )
         del nuc_df[str(nuc)]
     return nuc_df
 
@@ -215,28 +215,32 @@ def aln_clean(aln_df):
         idx = aln_df[aln_df["1_nuc"] != "-"].index
     else:
         one_side.append("2")
-        idx = aln_df[~((aln_df["1_nuc"] == "-") |
-                       (aln_df["2_nuc"] == "-"))].index
+        idx = aln_df[
+            ~((aln_df["1_nuc"] == "-") | (aln_df["2_nuc"] == "-"))
+        ].index
     u_range = list(useful_range(list(idx), 10))
     # Add the importnat gap. Default: 10
     if len(one_side) == 1:
         # Avoid erroneous alignments at the end
         temp_aln_df = aln_df.loc[u_range[0]: u_range[0] + 8]
-        if list(temp_aln_df["1_nuc"].values) != list(temp_aln_df["ref"].values
-                                                     ):
+        if list(temp_aln_df["1_nuc"].values) != list(
+            temp_aln_df["ref"].values
+        ):
             aln_df.loc[u_range[0]: u_range[0] + 8, "1_nuc"] = "-"
             u_range[0] += 9
         temp_aln_df = aln_df.loc[u_range[1] - 8: u_range[1]]
-        if list(temp_aln_df["1_nuc"].values) != list(temp_aln_df["ref"].values
-                                                     ):
+        if list(temp_aln_df["1_nuc"].values) != list(
+            temp_aln_df["ref"].values
+        ):
             aln_df.loc[u_range[1] - 8: u_range[1], "1_nuc"] = "-"
             u_range[1] -= 9
 
     for col in aln_df.columns:
         if col == "ref":
             continue
-        aln_df.loc[~aln_df.index.isin(
-            list(range(u_range[0], u_range[1] + 1))), col] = "-"
+        aln_df.loc[
+            ~aln_df.index.isin(list(range(u_range[0], u_range[1] + 1))), col
+        ] = "-"
 
     def rep_paired_base(lst):
         """Selecting reprentative base in presence of forward and
@@ -250,8 +254,9 @@ def aln_clean(aln_df):
             or (lst["2_nuc"] != lst["1_nuc"] == lst["ref"])
             or (lst["2_nuc"] == lst["1_nuc"] == lst["ref"])
             or (lst["2_nuc"] != lst["1_nuc"] != lst["ref"])
-            or ((lst["2_nuc"] not in "ACGT-")
-                and (lst["1_nuc"] not in "ACGT-"))
+            or (
+                (lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] not in "ACGT-")
+            )
         ):
             return lst["ref"]
         if lst["1_nuc"] == lst["2_nuc"] != lst["ref"]:
@@ -270,6 +275,7 @@ def aln_clean(aln_df):
         if lst["1_nuc"] not in "ACGT-":
             return lst["ref"]
         return lst["1_nuc"]
+
     if len(one_side) > 1:
         aln_df["rep"] = aln_df.apply(rep_paired_base, axis=1)
     else:
@@ -299,7 +305,8 @@ def fasta_map2ref(infile, outfile, tmp_fold):
     blat_df = pd.read_table(fout, header=None)
     blat_df = blat_df.sort_values(0, ascending=False)
     blat_df = blat_df.drop_duplicates(9).head(
-        1)  # NOTE:Considering only best match
+        1
+    )  # NOTE:Considering only best match
 
     sequences = {}
     for rec in SeqIO.parse(infile, "fasta"):
@@ -315,17 +322,16 @@ def fasta_map2ref(infile, outfile, tmp_fold):
             sequences[row[9]] = sequences[row[9]].reverse_complement()
 
         if row[17] == 1:
-            seq = sequences['ref'][:row[15]] + \
-                sequences[row[9]][row[11]: row[12]] + \
-                sequences['ref'][row[16]:]
+            seq = (
+                sequences["ref"][: row[15]]
+                + sequences[row[9]][row[11]: row[12]]
+                + sequences["ref"][row[16]:]
+            )
         else:
 
-            tstarts = np.array(
-                list(map(int, str(row[20])[:-1].split(","))))
-            qstarts = np.array(
-                list(map(int, str(row[19])[:-1].split(","))))
-            blocks = np.array(
-                list(map(int, str(row[18])[:-1].split(","))))
+            tstarts = np.array(list(map(int, str(row[20])[:-1].split(","))))
+            qstarts = np.array(list(map(int, str(row[19])[:-1].split(","))))
+            blocks = np.array(list(map(int, str(row[18])[:-1].split(","))))
 
             qends = qstarts + blocks
             tends = tstarts + blocks
@@ -339,17 +345,15 @@ def fasta_map2ref(infile, outfile, tmp_fold):
 
                 if qgap:
                     if (qgap > 9) or (qgap % 3):
-                        mseq += sequences["ref"][
-                            tends[i]:tstarts[i + 1]]
+                        mseq += sequences["ref"][tends[i]: tstarts[i + 1]]
                     else:
                         mseq += "-" * qgap
                 else:
                     if (tgap > 9) or (tgap % 3):
                         mseq += "-" * tgap
                     else:
-                        mseq += sequences[row[9]
-                                          ][qends[i]: qstarts[i + 1]]
-            seq = begins+mseq+ends
+                        mseq += sequences[row[9]][qends[i]: qstarts[i + 1]]
+            seq = begins + mseq + ends
         output_file.write(f">{row[9]} {row[15]} {row[16]}\n{seq}\n")
     output_file.close()
 
@@ -371,8 +375,7 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
         tsequences[rec.id] = str(rec.seq)
 
     for k in ab1seq_dfs:
-        ab1seq_dfs[k].columns = [
-            f"{k}_{col}" for col in ab1seq_dfs[k].columns]
+        ab1seq_dfs[k].columns = [f"{k}_{col}" for col in ab1seq_dfs[k].columns]
 
     aln_with_peak = merge_base_peak(
         aln_df_with_ref(tsequences, flb, tmp_fold), ab1seq_dfs
@@ -383,22 +386,22 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
             aln_with_peak.loc[pd.isnull(aln_with_peak[cl]), cl] = "-"
     aln_with_peak, u_range = aln_clean(aln_with_peak)
     if "2_nuc" in aln_with_peak.columns:
-        usr = useful_short_range(
+        usr = ranges(
             aln_with_peak[
                 aln_with_peak[["ref", "1_nuc", "2_nuc"]].apply(
-                    lambda row: True if "-" in list(
-                        row.values) else False,
-                    axis=1)
+                    lambda row: True if "-" in list(row.values) else False,
+                    axis=1,
+                )
             ].index,
             10,
         )  # TODO Idiot fix it
     else:
-        usr = useful_short_range(
+        usr = ranges(
             aln_with_peak[
                 aln_with_peak[["ref", "1_nuc"]].apply(
-                    lambda row: True if "-" in list(
-                        row.values) else False,
-                    axis=1)
+                    lambda row: True if "-" in list(row.values) else False,
+                    axis=1,
+                )
             ].index,
             10,
         )  # TODO: Idiot fix it
@@ -407,15 +410,12 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
             if "2_nuc" in aln_with_peak.columns:
                 if "".join(
                     aln_with_peak.loc[us[0]: us[1], "1_nuc"].values
-                ) == "".join(aln_with_peak.loc[us[0]: us[1],
-                                               "2_nuc"].values):
-                    aln_with_peak.loc[us[0]: us[1], "rep"
-                                      ] = aln_with_peak.loc[
-                        us[0]: us[1], "1_nuc"
-                    ].values
+                ) == "".join(aln_with_peak.loc[us[0]: us[1], "2_nuc"].values):
+                    aln_with_peak.loc[
+                        us[0]: us[1], "rep"
+                    ] = aln_with_peak.loc[us[0]: us[1], "1_nuc"].values
             else:
-                aln_with_peak.loc[us[0]: us[1], "rep"
-                                  ] = aln_with_peak.loc[
+                aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
                     us[0]: us[1], "ref"
                 ].values
     seq = "".join(list(aln_with_peak["rep"].values))
@@ -502,8 +502,11 @@ def files_and_groups(sanger_files):
 #               type=click.Choice([None, "max", "neigh", "ref"]),
 # default=None, show_default=True)
 @click.option(
-    "-outd", help="Output Folder", type=str, default="Results",
-    show_default=True
+    "-outd",
+    help="Output Folder",
+    type=str,
+    default="Results",
+    show_default=True,
 )
 def run(sa_ab1, asf, outd):  # , fa, asb, al, bs
     """
@@ -600,9 +603,11 @@ GGAGTCAAATTACATTACACATAA"""
 
     sanger_outputs = files_and_groups(glob(f"{sa_ab1}/*"))
 
-    @transform(sanger_outputs,
-               formatter(r".+/(?P<filebase>\w+).(?P<tame>\w+)"),
-               "%s/{filebase[0]}.fasta" % tmp_fold)
+    @transform(
+        sanger_outputs,
+        formatter(r".+/(?P<filebase>\w+).(?P<tame>\w+)"),
+        "%s/{filebase[0]}.fasta" % tmp_fold,
+    )
     def ab1_2_fasta_r(inputfiles, outputfile):
         """TODO: Converts ab1 to fasta.
 
@@ -620,7 +625,7 @@ GGAGTCAAATTACATTACACATAA"""
             for fl in inputfiles:
                 for rec in SeqIO.parse(fl, "fasta"):
                     fout.write(f">{rec.description}\n{rec.seq}\n")
-         # print(inputfiles)
+        # print(inputfiles)
 
     @mkdir(outd)
     @transform(
@@ -644,17 +649,24 @@ GGAGTCAAATTACATTACACATAA"""
             org_seq[rec.id] = str(rec.seq)
 
         flb = path.split(assembly)[1].split(".fasta")[0]
-        command = ["blat", "-noHead", assembly,
-                   sang_file, f"{tmp_fold}/{flb}.psl"]
+        command = [
+            "blat",
+            "-noHead",
+            assembly,
+            sang_file,
+            f"{tmp_fold}/{flb}.psl",
+        ]
         cmd(command)
         blat_df = pd.read_table(f"{tmp_fold}/{flb}.psl", header=None)
         # return
-        blat_df = blat_df[blat_df[9] == blat_df[13]].sort_values(
-            0, ascending=False).drop_duplicates(9)
+        blat_df = (
+            blat_df[blat_df[9] == blat_df[13]]
+            .sort_values(0, ascending=False)
+            .drop_duplicates(9)
+        )
 
         for _, row in blat_df.iterrows():
-            start, end = list(
-                map(int, sanger_seq_desc[row[9]].split()[1:]))
+            start, end = list(map(int, sanger_seq_desc[row[9]].split()[1:]))
             if row[11] == 0:
                 org_seq[row[9]] = (
                     org_seq[row[9]][: row[15] + start]
