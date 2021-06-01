@@ -1,0 +1,4 @@
+pandas==1.2.4
+biopython==1.78
+click==7.1.2
+ruffus==2.8.4
