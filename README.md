@@ -21,7 +21,7 @@ Both the tools can be either be downloaded from provided links or installed usin
 
 ### installation
 - Install dependencies using `pip install -r requirements.txt` , download `seqpatcher.py` in your working directory and execute as instructed in [Execution](#execution) section.
-- Install using `pip install git+https://github.com/krisp-kwazulu-natal/sars-cov-2-sequencing-merge-sanger` or `git clone https://github.com/krisp-kwazulu-natal/sars-cov-2-sequencing-merge-sanger && cd sars-cov-2-sequencing-merge-sanger && python setup.py install`.  `ab1_integration.py` should be installed in system path.
+- Install using `pip install git+https://github.com/krisp-kwazulu-natal/sars-cov-2-sequencing-merge-sanger` or `git clone https://github.com/krisp-kwazulu-natal/sars-cov-2-sequencing-merge-sanger && cd sars-cov-2-sequencing-merge-sanger && python setup.py install`.  `seqpatcher.py` should be installed in system path.
 
 
 
@@ -42,8 +42,8 @@ extension. However, the sequences' names be same as <sample_name>
 <a name="execution" />
 # Execution
 
-- execute `python ab1_integration.py --help` for help
-- execute `ab1_integration.py --help` for help, if installed in system path.
+- execute `python seqpatcher.py --help` for help
+- execute `seqpatcher.py --help` for help, if installed in system path.
 - To execute in current folder you must have following folders
   - ab1: Containing ab1 files paired
   - assemblies: Assembly files generated using HTS data. These can be merged in one file.
