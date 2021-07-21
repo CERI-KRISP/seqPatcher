@@ -20,7 +20,7 @@ Both the tools can be either be downloaded from provided links or installed usin
 - ruffus==2.8.4
 
 ### installation
-- Install dependencies using `pip install -r requirements.txt` , download `ab1_integration.py` in your working directory and execute as instructed in [Execution](#execution) section.
+- Install dependencies using `pip install -r requirements.txt` , download `seqpatcher.py` in your working directory and execute as instructed in [Execution](#execution) section.
 - Install using `pip install git+https://github.com/krisp-kwazulu-natal/sars-cov-2-sequencing-merge-sanger` or `git clone https://github.com/krisp-kwazulu-natal/sars-cov-2-sequencing-merge-sanger && cd sars-cov-2-sequencing-merge-sanger && python setup.py install`.  `ab1_integration.py` should be installed in system path.
 
 
