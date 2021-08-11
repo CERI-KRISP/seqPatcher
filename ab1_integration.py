@@ -92,7 +92,8 @@ def df_reverse_complement(dataframe):
 def ab1seq(infile, tmp_fold):
     """ab1 to seq trimmed based on reference."""
 
-    channels = ["DATA9", "DATA10", "DATA11", "DATA12"]  # G  # A  # T  # C
+    # NOTE: Base oerder # G  # A  # T  # C
+    channels = ["DATA9", "DATA10", "DATA11", "DATA12"]
     amb_bases = {  # All ambiguous nucleotides
         "N": set(["A", "C", "G", "T"]),
         "R": set(["A", "G"]),
@@ -134,6 +135,7 @@ def ab1seq(infile, tmp_fold):
     peak = nuc_df["peak"].apply(lambda x: np.mean(list(x.values()))).values
 
     correct_peak_pos = np.where(peak > 100)[0]
+    # TODO: Autothreshold
     min_pos, max_pos = np.min(correct_peak_pos), np.max(
         correct_peak_pos
     )  # 1 is added as last position is not included
@@ -215,23 +217,21 @@ def aln_clean(aln_df):
         idx = aln_df[aln_df["1_nuc"] != "-"].index
     else:
         one_side.append("2")
-        idx = aln_df[
-            ~((aln_df["1_nuc"] == "-") | (aln_df["2_nuc"] == "-"))
-        ].index
+        # NOTE: Considering both sequences should overlap
+        # idx = aln_df[~((aln_df["1_nuc"] == "-") | (aln_df["2_nuc"] == "-"))].index
+        # NOTE: Considering either sequence overlapping regions
+        idx = aln_df[~((aln_df["1_nuc"] == "-") &
+                       (aln_df["2_nuc"] == "-"))].index
     u_range = list(useful_range(list(idx), 10))
     # Add the importnat gap. Default: 10
     if len(one_side) == 1:
         # Avoid erroneous alignments at the end
         temp_aln_df = aln_df.loc[u_range[0]: u_range[0] + 8]
-        if list(temp_aln_df["1_nuc"].values) != list(
-            temp_aln_df["ref"].values
-        ):
+        if list(temp_aln_df["1_nuc"].values) != list(temp_aln_df["ref"].values):
             aln_df.loc[u_range[0]: u_range[0] + 8, "1_nuc"] = "-"
             u_range[0] += 9
         temp_aln_df = aln_df.loc[u_range[1] - 8: u_range[1]]
-        if list(temp_aln_df["1_nuc"].values) != list(
-            temp_aln_df["ref"].values
-        ):
+        if list(temp_aln_df["1_nuc"].values) != list(temp_aln_df["ref"].values):
             aln_df.loc[u_range[1] - 8: u_range[1], "1_nuc"] = "-"
             u_range[1] -= 9
 
@@ -243,7 +243,7 @@ def aln_clean(aln_df):
         ] = "-"
 
     def rep_paired_base(lst):
-        """Selecting reprentative base in presence of forward and
+        """Selecting representative base in presence of forward and
         reverse sanger sequencing data."""
         # TODO: Can be improved later selective query here
         if lst["ref"] == "-":
@@ -254,16 +254,18 @@ def aln_clean(aln_df):
             or (lst["2_nuc"] != lst["1_nuc"] == lst["ref"])
             or (lst["2_nuc"] == lst["1_nuc"] == lst["ref"])
             or (lst["2_nuc"] != lst["1_nuc"] != lst["ref"])
-            or (
-                (lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] not in "ACGT-")
-            )
+            or ((lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] not in "ACGT-"))
         ):
             return lst["ref"]
         if lst["1_nuc"] == lst["2_nuc"] != lst["ref"]:
             return lst["1_nuc"]
-        if (lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] in "ACGT"):
+        # if (lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] in "ACGT"):
+        if (lst["2_nuc"] not in "ACGT") and (lst["1_nuc"] in "ACGT"):
+            # NOTE: alowing gap in one base
             return lst["1_nuc"]
-        if (lst["1_nuc"] not in "ACGT-") and (lst["2_nuc"] in "ACGT"):
+        # if (lst["1_nuc"] not in "ACGT-") and (lst["2_nuc"] in "ACGT"):
+        if (lst["1_nuc"] not in "ACGT") and (lst["2_nuc"] in "ACGT"):
+            # NOTE: alowing gap in one base
             return lst["2_nuc"]
         # TODO: What should be returned when nothing works??
 
@@ -305,8 +307,7 @@ def fasta_map2ref(infile, outfile, tmp_fold):
     blat_df = pd.read_table(fout, header=None)
     blat_df = blat_df.sort_values(0, ascending=False)
     blat_df = blat_df.drop_duplicates(9).head(
-        1
-    )  # NOTE:Considering only best match
+        1)  # NOTE:Considering only best match
 
     sequences = {}
     for rec in SeqIO.parse(infile, "fasta"):
@@ -408,12 +409,12 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
     if usr:
         for us in usr:
             if "2_nuc" in aln_with_peak.columns:
-                if "".join(
-                    aln_with_peak.loc[us[0]: us[1], "1_nuc"].values
-                ) == "".join(aln_with_peak.loc[us[0]: us[1], "2_nuc"].values):
-                    aln_with_peak.loc[
-                        us[0]: us[1], "rep"
-                    ] = aln_with_peak.loc[us[0]: us[1], "1_nuc"].values
+                if "".join(aln_with_peak.loc[us[0]: us[1], "1_nuc"].values) == "".join(
+                    aln_with_peak.loc[us[0]: us[1], "2_nuc"].values
+                ):
+                    aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
+                        us[0]: us[1], "1_nuc"
+                    ].values
             else:
                 aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
                     us[0]: us[1], "ref"
