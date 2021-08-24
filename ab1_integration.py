@@ -420,6 +420,7 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
                     us[0]: us[1], "ref"
                 ].values
     seq = "".join(list(aln_with_peak["rep"].values))
+    # TODO: Generate sequence and exit
 
     output_file = open(outfile, "w")
     output_file.write(f">{flb} {u_range[0]} {u_range[1]}\n{seq}\n")
@@ -580,7 +581,14 @@ def non_overlapping_ids(asseblies, ab1s):
     default="mmf.csv",
     show_default=True,
 )
-def run(sa_ab1, asf, outd, mf, mff):  # , fa, asb, al, bs
+@click.option(
+    "-ss",
+    help="Sanger output fasta from ab1",
+    type=str,
+    default=None,
+    show_default=True,
+)
+def run(sa_ab1, asf, outd, mf, mff, ss):  # , fa, asb, al, bs
     """
     Convert ab1 to Fasta based given parameters. must contain original
     sequence name., Must me N trimmed at the end
@@ -600,6 +608,12 @@ def run(sa_ab1, asf, outd, mf, mff):  # , fa, asb, al, bs
     neigh: earlier peak if ambiguous nucleotide contain earlier base
     ref: Use reference base in case of ambiguity
     """
+    if mf:
+        seq_id_df = non_overlapping_ids(asf, sa_ab1)
+        if mff:
+            seq_id_df.to_csv(mff, index=False)
+        else:
+            print(seq_id_df)
 
     tmp_fold = "tmp"
     makedirs(tmp_fold, exist_ok=True)
@@ -690,19 +704,30 @@ GGAGTCAAATTACATTACACATAA"""
         ab2fasta(inputfiles, outputfile)
 
     @merge(
-        ab1_2_fasta_r, f"{tmp_fold}/sanger.fasta"
+        ab1_2_fasta_r, f"{tmp_fold}/sanger.fasta", extras=[ss]
     )  # Apply merge it. Ignore  if it fails to include
-    def sanger_seq_r(inputfiles, outputfile):
+    def sanger_seq_r(inputfiles, outputfile, extras):
+        # print(extras, "testing Anmol")
+        if extras:
+            extras_file = open(extras, "w")
         with open(outputfile, "w") as fout:
             for fl in inputfiles:
                 for rec in SeqIO.parse(fl, "fasta"):
                     fout.write(f">{rec.description}\n{rec.seq}\n")
-        # print(inputfiles)
+                    if extras:
+                        coors = rec.description.split()[1:]
+                        coors = int(coors[0]), int(coors[1])
+                        extras_file.write(
+                            f">{rec.id}\n{rec.seq[coors[0]:coors[1]]}\n")
+        if extras:
+            extras_file.close()
+        # TODO: if mergeing is allow, generate a local copy
+        # TODO: Get input from extras
 
     @mkdir(outd)
     @transform(
         assemblies,
-        formatter(r".+/(?P<filebase>\w+)"),  # NOTE: Anmol you have added an r
+        formatter(r".+/(?P<filebase>\w+)"),
         add_inputs(sanger_seq_r),
         "%s/{filebase[0]}.fasta" % outd,
     )
@@ -778,8 +803,3 @@ GGAGTCAAATTACATTACACATAA"""
 
 if __name__ == "__main__":
     run()
-
-
-# TODO:1. Number of totals assembly fasta
-# TODO 2. Number sanger ab1 and fasta file as table
-#
