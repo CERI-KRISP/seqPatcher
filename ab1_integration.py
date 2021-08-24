@@ -478,6 +478,63 @@ def files_and_groups(sanger_files):
     return sanger_outputs
 
 
+def non_overlapping_ids(asseblies, ab1s):
+    """Check for ovelapping and non-ovelapping ids and generates csv table
+
+    :asseblies: Fasta assembly containing folder
+    :ab1s: Sanger generated ab1 or fasta files
+    :returns: Pandas dataframe
+
+    """
+    assembly_ids = []
+    for fl in glob(f"{asseblies}/*.fasta"):
+        for rec in SeqIO.parse(fl, "fasta"):
+            assembly_ids.append(rec.id)
+
+    sanger_fasta = []
+    for fl in glob(f"{ab1s}/*.fasta"):
+        for rec in SeqIO.parse(fl, "fasta"):
+            sanger_fasta.append(rec.id)
+    sanger_fasta_missing_assembly = ",".join(
+        set(sanger_fasta) - set(assembly_ids))
+    sanger_ab1_f = []
+
+    for fl in glob(f"{ab1s}/*.ab1"):
+        sanger_ab1_f.append(path.split(fl)[1].split("_F.ab1")[0])
+    sanger_ab1_f_missing_assembly = ",".join(
+        set(sanger_fasta) - set(sanger_ab1_f))
+    sanger_ab1_r = []
+    for fl in glob(f"{ab1s}/*_R.ab1"):
+        sanger_ab1_r.append(path.split(fl)[1].split("_R.ab1")[0])
+    sanger_ab1_r_missing_assembly = ",".join(
+        set(sanger_fasta) - set(sanger_ab1_r))
+
+    data_frame = {"assembly": [], "ab1_Forward": [],
+                  "ab1_Reverse": [], "fasta": []}
+    for assembly_id in assembly_ids:
+        data_frame["assembly"].append(assembly_id)
+        if assembly_id in sanger_ab1_f:
+            data_frame["ab1_Forward"].append(1)
+        else:
+            data_frame["ab1_Forward"].append(0)
+
+        if assembly_id in sanger_ab1_r:
+            data_frame["ab1_Reverse"].append(1)
+        else:
+            data_frame["ab1_Reverse"].append(0)
+
+        if assembly_id in sanger_fasta:
+            data_frame["fasta"].append(1)
+        else:
+            data_frame["fasta"].append(0)
+
+    data_frame["assembly"].append("No Assembly")
+    data_frame["ab1_Forward"].append(sanger_ab1_f_missing_assembly)
+    data_frame["ab1_Reverse"].append(sanger_ab1_r_missing_assembly)
+    data_frame["fasta"].append(sanger_fasta_missing_assembly)
+    return pd.DataFrame(data_frame)
+
+
 @click.command()
 @click.option(
     "-sa_ab1",
@@ -509,7 +566,21 @@ def files_and_groups(sanger_files):
     default="Results",
     show_default=True,
 )
-def run(sa_ab1, asf, outd):  # , fa, asb, al, bs
+@click.option(
+    "-mf",
+    help="Report none ovelapping and IDs missing sanger seq",
+    type=bool,
+    default=True,
+    show_default=True,
+)
+@click.option(
+    "-mff",
+    help="Mismatch id table csv file",
+    type=str,
+    default="mmf.csv",
+    show_default=True,
+)
+def run(sa_ab1, asf, outd, mf, mff):  # , fa, asb, al, bs
     """
     Convert ab1 to Fasta based given parameters. must contain original
     sequence name., Must me N trimmed at the end
@@ -707,3 +778,8 @@ GGAGTCAAATTACATTACACATAA"""
 
 if __name__ == "__main__":
     run()
+
+
+# TODO:1. Number of totals assembly fasta
+# TODO 2. Number sanger ab1 and fasta file as table
+#
