@@ -538,7 +538,8 @@ def non_overlapping_ids(asseblies, ab1s):
 
 @click.command()
 @click.option(
-    "-sa_ab1",
+    "-s",
+    "--sanger-ab1",
     help="ab1 folder or sanger sequence file",
     type=str,
     default="unitest/ab1_paired/ab1",
@@ -549,7 +550,8 @@ def non_overlapping_ids(asseblies, ab1s):
 # If not given, only sequences will be printed in terminal",
 #               type=str, default=None, show_default=True)
 @click.option(
-    "-asf",
+    "-a",
+    "-assemblies-foder",
     help="Assemblies folder containing fasta files",
     type=str,
     default="assemblies",
@@ -561,28 +563,31 @@ def non_overlapping_ids(asseblies, ab1s):
 #               type=click.Choice([None, "max", "neigh", "ref"]),
 # default=None, show_default=True)
 @click.option(
-    "-outd",
+    "-o",
+    "--out-dir",
     help="Output Folder",
     type=str,
     default="Results",
     show_default=True,
 )
 @click.option(
-    "-mf",
+    "-r",
+    "--unpaired-ids",
     help="Report none ovelapping and IDs missing sanger seq",
     type=bool,
     default=True,
     show_default=True,
 )
 @click.option(
-    "-mff",
+    "-t",
+    "--missmatch-table",
     help="Mismatch id table csv file",
     type=str,
     default="mmf.csv",
     show_default=True,
 )
 @click.option(
-    "-ss",
+    "-O",
     help="Sanger output fasta from ab1",
     type=str,
     default=None,
