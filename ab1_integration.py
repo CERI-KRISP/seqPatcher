@@ -587,7 +587,7 @@ def non_overlapping_ids(asseblies, ab1s):
     show_default=True,
 )
 @click.option(
-    "-O",
+    "-O", "--output-fasta",
     help="Sanger output fasta from ab1",
     type=str,
     default=None,
@@ -601,12 +601,16 @@ def run(sa_ab1, asf, outd, mf, mff, ss):  # , fa, asb, al, bs
     suffix with sequence name as prefix\n
     .\n
     ├── ab1\n
-    │   ├── x.ab1\n
-    │   ├── y.ab1\n
-    │   └── z.ab1\n
-    ├── assembly.fasta\n
+    │   ├── x_F.ab1\n
+    │   ├── x_R.ab1\n
+    │   └── z.fasta\n
+    ├── assemblies\n
+    │   ├── a.fasat\n
+    │   └── b.fasta\n
     ├── ref.fasta\n
-    └── sanger.fasta\n
+    └── Results\n
+        └── merged_output.fasta\n
+
     Will generate `merged_output.fasta` in current folder.
 
     max: max peak
