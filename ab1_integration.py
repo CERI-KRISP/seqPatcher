@@ -153,7 +153,7 @@ def ab1seq(infile, tmp_fold):
     command = [
         "blat",
         "-noHead",
-        f"{tmp_fold}/CoVid_S_Gene.fasta",
+        f"{tmp_fold}/ref.fasta",
         f"{tmp_fold}/{flb}.fasta",
         f"{tmp_fold}/{flb}.psl",
     ]  # Mapping against reference
@@ -298,7 +298,7 @@ def fasta_map2ref(infile, outfile, tmp_fold):
     command = [
         "blat",
         "-noHead",
-        f"{tmp_fold}/CoVid_S_Gene.fasta",
+        f"{tmp_fold}/ref.fasta",
         infile,
         fout,
     ]
@@ -312,7 +312,7 @@ def fasta_map2ref(infile, outfile, tmp_fold):
     sequences = {}
     for rec in SeqIO.parse(infile, "fasta"):
         sequences[rec.id] = rec.seq
-    for rec in SeqIO.parse(f"{tmp_fold}/CoVid_S_Gene.fasta", "fasta"):
+    for rec in SeqIO.parse(f"{tmp_fold}/ref.fasta", "fasta"):
         sequences[rec.id] = rec.seq
     # TODO: Collect the details based
 
@@ -372,7 +372,7 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
     for i, fl in enumerate(infiles, start=1):
         ab1seq_dfs[i] = ab1seq(fl, tmp_fold)  # TODO: add the condition
         tsequences[i] = "".join(ab1seq_dfs[i]["nuc"].values)
-    for rec in SeqIO.parse(f"{tmp_fold}/CoVid_S_Gene.fasta", "fasta"):
+    for rec in SeqIO.parse(f"{tmp_fold}/ref.fasta", "fasta"):
         tsequences[rec.id] = str(rec.seq)
 
     for k in ab1seq_dfs:
@@ -540,6 +540,7 @@ def non_overlapping_ids(asseblies, ab1s):
 @click.option(
     "-s",
     "--sanger-ab1",
+    "sa_ab1",
     help="ab1 folder or sanger sequence file",
     type=str,
     default="unitest/ab1_paired/ab1",
@@ -552,6 +553,7 @@ def non_overlapping_ids(asseblies, ab1s):
 @click.option(
     "-a",
     "-assemblies-foder",
+    "asf",
     help="Assemblies folder containing fasta files",
     type=str,
     default="assemblies",
@@ -565,6 +567,7 @@ def non_overlapping_ids(asseblies, ab1s):
 @click.option(
     "-o",
     "--out-dir",
+    "outd",
     help="Output Folder",
     type=str,
     default="Results",
@@ -573,6 +576,7 @@ def non_overlapping_ids(asseblies, ab1s):
 @click.option(
     "-r",
     "--unpaired-ids",
+    "mf",
     help="Report none ovelapping and IDs missing sanger seq",
     type=bool,
     default=True,
@@ -581,19 +585,28 @@ def non_overlapping_ids(asseblies, ab1s):
 @click.option(
     "-t",
     "--missmatch-table",
+    "mff",
     help="Mismatch id table csv file",
     type=str,
     default="mmf.csv",
     show_default=True,
 )
 @click.option(
-    "-O", "--output-fasta",
+    "-O",
+    "--output-fasta",
+    "ss",
     help="Sanger output fasta from ab1",
     type=str,
     default=None,
     show_default=True,
 )
-def run(sa_ab1, asf, outd, mf, mff, ss):  # , fa, asb, al, bs
+@click.option(
+    "-R", "--ref-gene-fasta-file", "rf",
+    help="Refence gene file in fasta format",
+    type=str,
+    default=None,
+    show_default=True)
+def run(sa_ab1, asf, outd, mf, mff, ss, rf):  # , fa, asb, al, bs
     """
     Convert ab1 to Fasta based given parameters. must contain original
     sequence name., Must me N trimmed at the end
@@ -693,8 +706,20 @@ TGGCTAGGTTTTATAGCTGGCTTGATTGCCATAGTAATGGTGACAATTATGCTTTGCTGTATGACCAGTTGCTGT
 AGTTGTCTCAAGGGCTGTTGTTCTTGTGGATCCTGCTGCAAATTTGATGAAGACGACTCTGAGCCAGTGCTCAAA
 GGAGTCAAATTACATTACACATAA"""
 
-    with open(f"{tmp_fold}/CoVid_S_Gene.fasta", "w") as fout:
-        fout.write(f">ref\n{s_gene_seq}\n")
+    rf = False
+    with open(f"{tmp_fold}/ref.fasta", "w") as fout:
+        if not rf:
+            fout.write(f">ref\n{s_gene_seq}\n")
+        else:
+            if not path.exists(rf) or not path.isfile(rf):
+                exit(f"{rf} path or file doesn't exist. Exiting . . . ")
+            # TODO: Check if ref file exist
+            seq_count = 0
+            for rec in SeqIO.parse(rf, "fasta"):
+                seq_count += 1
+                if seq_count > 1:
+                    exit(f"{rf} contains more than 1 sequence. Exiting.")
+                fout.write(f">{rec.id}\n{rec.seq}\n")
 
     sanger_outputs = files_and_groups(glob(f"{sa_ab1}/*"))
 
