@@ -94,8 +94,8 @@ extension. However, the sequences' names be same as <sample_name>
 # TODOs
 
 - [x] Testing
-- [ ] Clean intermediate files
-- [x] Start over option
+- [x] Clean intermediate files
+- [ ] Start over option
 - [x] fix bs option after discussion with San
 
 # License
