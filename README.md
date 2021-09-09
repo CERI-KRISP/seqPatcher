@@ -1,6 +1,6 @@
 # SARS-CoV-2 Sequencing: Merge Sanger
 
-The script () integrates the sanger sequenced SARS-CoV-2 S-gene into HTS based generated SARS-CoV-2 genome assemblies.
+The script seqpatcher.py integrates the sanger sequenced SARS-CoV-2 S-gene segment into the corresponding HTS based SARS-CoV-2 genome assembly.
 
 
 # Dependencies
@@ -93,10 +93,10 @@ extension. However, the sequences' names be same as <sample_name>
 
 # TODOs
 
-- [ ] Testing
+- [x] Testing
 - [ ] Clean intermediate files
-- [ ] Start over option
-- [ ] fix bs option after discussion with San
+- [x] Start over option
+- [x] fix bs option after discussion with San
 
 # License
 
