@@ -6,11 +6,14 @@
 # V0.1: 20/04/2021
 
 
+import os
 import subprocess as sb
 import sys
 from collections import defaultdict
+from multiprocessing import cpu_count
 from glob import glob
-from os import makedirs, path
+from os import makedirs, path, access
+import tempfile as tmf
 
 import click
 import numpy as np
@@ -28,7 +31,10 @@ from ruffus import (
 
 
 def cmd(command):
-    """Runs all the command using Popen communicate."""
+    """Runs all the command using Popen communicate.
+    :command: in form of list ie ['ls', '-l']
+    :return: None
+    """
     sb.Popen(command, stdout=sb.DEVNULL).communicate()
 
 
@@ -43,17 +49,16 @@ def ranges(lst, given_gap=0):
     lst_sorted = sorted(lst)
     init = 0
     for num in range(1, len(lst_sorted)):
-        reported_gap = lst_sorted[num] - lst_sorted[num - 1] - 1
-        if (lst_sorted[num] > given_gap + 1 + lst_sorted[num - 1]) or (
-            reported_gap % 3 != 0
-        ):
+        # reported_gap = lst_sorted[num] - lst_sorted[num - 1] - 1
+        if lst_sorted[num] > given_gap + 1 + lst_sorted[num - 1]:
+            # or (reported_gap % 3 != 0):
             # gap=0 means overlapping
             yield (lst_sorted[init], lst_sorted[num - 1])
             init = num
     yield (lst_sorted[init], lst_sorted[-1])
 
 
-def useful_range(lst, gap=10):
+def useful_range(lst, gap=10):  # TODO: Add in command
     """Returns first occurance maximum length block range."""
     # TODO: Check with other that if they are happy with it
     # or they want other fragment to be selected
@@ -92,8 +97,6 @@ def df_reverse_complement(dataframe):
 def ab1seq(infile, tmp_fold):
     """ab1 to seq trimmed based on reference."""
 
-    # NOTE: Base oerder # G  # A  # T  # C
-    channels = ["DATA9", "DATA10", "DATA11", "DATA12"]
     amb_bases = {  # All ambiguous nucleotides
         "N": set(["A", "C", "G", "T"]),
         "R": set(["A", "G"]),
@@ -113,7 +116,7 @@ def ab1seq(infile, tmp_fold):
     record = SeqIO.read(infile, "abi")
     trace = defaultdict(list)
 
-    for channel in channels:
+    for channel in bases:
         trace[bases[channel]] = record.annotations["abif_raw"][channel]
 
     nuc_df = {"nuc": [], "peak": []}
@@ -222,6 +225,13 @@ def aln_clean(aln_df):
         # NOTE: Considering either sequence overlapping regions
         idx = aln_df[~((aln_df["1_nuc"] == "-") &
                        (aln_df["2_nuc"] == "-"))].index
+        # TODO: Use below code if other team members allow
+        # Checking with gap with common 3 nuc length gaps
+        idx3 = aln_df[(aln_df["1_nuc"] == "-") &
+                      (aln_df["2_nuc"] == "-")].index
+        u3_range = list(useful_range(list(idx3), 1))
+        # TODO: Select ranges with length of 3 and push them in the sequences
+
     u_range = list(useful_range(list(idx), 10))
     # Add the importnat gap. Default: 10
     if len(one_side) == 1:
@@ -286,13 +296,17 @@ def aln_clean(aln_df):
     return aln_df, u_range
 
 
-def fasta_map2ref(infile, outfile, tmp_fold):
-    """TODO: Docstring for fasta_map2ref.
+def fasta_map2ref(*args):
+    # TODO: Use some part for arranging the sequence
+    """Generate ouput file, sanger fasta integrated in refgne with range is
+    description
 
-    :arg1: TODO: Considering the the file has only on sequence
-    :returns: TODO
+    :args: infile, outfile, tmp_fold, idb, gap
+
+    :returns: None
 
     """
+    infile, outfile, tmp_fold, idb, gap = args
     fout = path.split(infile)[1] + ".psl"
     fout = f"{tmp_fold}/{fout}"
     command = [
@@ -310,53 +324,25 @@ def fasta_map2ref(infile, outfile, tmp_fold):
         1)  # NOTE:Considering only best match
 
     sequences = {}
+    flb = ""
     for rec in SeqIO.parse(infile, "fasta"):
         sequences[rec.id] = rec.seq
+        flb = rec.id
     for rec in SeqIO.parse(f"{tmp_fold}/ref.fasta", "fasta"):
-        sequences[rec.id] = rec.seq
-    # TODO: Collect the details based
-
-    output_file = open(outfile, "w")
+        sequences["ref"] = rec.seq
 
     for _, row in blat_df.iterrows():
         if row[8] == "-":
             sequences[row[9]] = sequences[row[9]].reverse_complement()
+    aln_df = aln_df_with_ref(sequences, flb, tmp_fold)
+    mapped_index = aln_df[aln_df[flb] != "-"].index
+    u_range = useful_range(mapped_index, gap)
+    ref = "".join(aln_df["ref"])
+    seq = "".join(aln_df[flb])
+    seq = ref[: u_range[0]] + seq[u_range[0]: u_range[1]] + ref[u_range[1]:]
 
-        if row[17] == 1:
-            seq = (
-                sequences["ref"][: row[15]]
-                + sequences[row[9]][row[11]: row[12]]
-                + sequences["ref"][row[16]:]
-            )
-        else:
-
-            tstarts = np.array(list(map(int, str(row[20])[:-1].split(","))))
-            qstarts = np.array(list(map(int, str(row[19])[:-1].split(","))))
-            blocks = np.array(list(map(int, str(row[18])[:-1].split(","))))
-
-            qends = qstarts + blocks
-            tends = tstarts + blocks
-            begins = sequences["ref"][: row[15]]
-            ends = sequences["ref"][row[16]:]
-            mseq = ""
-            for i in range(row[17] - 1):
-                qgap = qstarts[i + 1] - qends[i]
-                tgap = tstarts[i + 1] - tends[i]
-                mseq += sequences[row[9]][qstarts[i]: qends[i]]
-
-                if qgap:
-                    if (qgap > 9) or (qgap % 3):
-                        mseq += sequences["ref"][tends[i]: tstarts[i + 1]]
-                    else:
-                        mseq += "-" * qgap
-                else:
-                    if (tgap > 9) or (tgap % 3):
-                        mseq += "-" * tgap
-                    else:
-                        mseq += sequences[row[9]][qends[i]: qstarts[i + 1]]
-            seq = begins + mseq + ends
-        output_file.write(f">{row[9]} {row[15]} {row[16]}\n{seq}\n")
-    output_file.close()
+    with open(outfile, "w") as fout:
+        fout.write(f">{flb} {u_range[0]} {u_range[1]}\n{seq}\n")
 
 
 def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
@@ -453,8 +439,15 @@ def files_and_groups(sanger_files):
         flx = path.split(file_)[1]
         if flx.endswith(".fasta"):
             flb = flx.split(".fasta")[0]
+        # TODO: Auto detect forward and reverse
         elif flx.endswith(".ab1"):
-            flb = flx.split(".")[0]  # Fist part should be the name
+            if flx.endswith("_F.ab1"):
+                flb = flx.split("_F.ab1")[0]  # Fist part should be the name
+            elif flx.endswith("_R.ab1"):
+                flb = flx.split("_F.ab1")[0]
+            else:
+                print(f"{file_} file is not registered as forward or reverse.")
+            # TODO: Perform pairwise corrections
         else:
             print(f"{file_} doesn't have fasta or ab1 extention. Ignoring")
             continue
@@ -464,8 +457,9 @@ def files_and_groups(sanger_files):
     for group in file_groups:
         if len(file_groups[group]) > 2:
             print(
-                f"{len(file_groups[group])} files are associated with id: {group}. \
-                        Expecting 1 or 2 only"
+                f"{len(file_groups[group])} files ({file_groups[group]}) are"
+                f" associated with id: {group}. Expecting 1 fasta or 2 ab1"
+                " files only"
             )
             sys.exit(0)
     for group in file_groups:
@@ -556,7 +550,7 @@ def non_overlapping_ids(asseblies, ab1s):
     "asf",
     help="Assemblies folder containing fasta files",
     type=str,
-    default="assemblies",
+    default="unitest/assemblies",
     show_default=True,
 )  # /home/devil/Documents/San/Corona/Merging/Sanger/
 # @click.option("-rf", help="Reference fasta",
@@ -601,35 +595,85 @@ def non_overlapping_ids(asseblies, ab1s):
     show_default=True,
 )
 @click.option(
-    "-R", "--ref-gene-fasta-file", "rf",
+    "-R",
+    "--ref-gene-fasta-file",
+    "rf",
     help="Refence gene file in fasta format",
     type=str,
     default=None,
-    show_default=True)
-def run(sa_ab1, asf, outd, mf, mff, ss, rf):  # , fa, asb, al, bs
+    show_default=True,
+)
+@click.option(
+    "-n",
+    "--cpu",
+    "cpu",
+    help="Number of CPU to use",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "-c",
+    "--clean-intermediate",
+    "ci",
+    help="Remove intermediate file",
+    type=bool,
+    default=True,
+    show_default=True,
+)
+@click.option(
+    "-g",
+    "--gap-allowed",
+    "gap",
+    help="Gap Allowed between aligned fragment to consider the region continuous",
+    type=int,
+    default=10,
+    show_default=True,
+)
+@click.option(
+    "-3",
+    "--only-3-nuc",
+    "n3",
+    help="Allow gap of 3 nucleotide (only if supported by both forward and reverse)",
+    type=bool,
+    default=True,
+    show_default=True,
+)
+@click.option(
+    "-x",
+    "--indel-selction",
+    "idb",
+    help="Replace Insertion, Deletion or Both",
+    type=click.Choice(["del", "ins", "both"]),
+    default="del",
+    show_default=True,
+    multiple=False,
+)
+def run(sa_ab1, asf, outd, mf, mff, ss, rf, cpu, ci, gap, n3, idb):  # , fa, asb, al, bs
+    # TODO: Allowing insertion details only
     """
     Convert ab1 to Fasta based given parameters. must contain original
     sequence name., Must me N trimmed at the end
     work when either ab1 or sa parameter given. Must have ab1 files with ab1
     suffix with sequence name as prefix\n
-    .\n
-    ├── ab1\n
-    │   ├── x_F.ab1\n
-    │   ├── x_R.ab1\n
-    │   └── z.fasta\n
-    ├── assemblies\n
-    │   ├── a.fasat\n
-    │   └── b.fasta\n
-    ├── ref.fasta\n
-    └── Results\n
-        └── merged_output.fasta\n
-
     Will generate `merged_output.fasta` in current folder.
 
     max: max peak
     neigh: earlier peak if ambiguous nucleotide contain earlier base
     ref: Use reference base in case of ambiguity
     """
+    if cpu < 1:
+        print("Number of CPU use given is < 1.")
+        print("Using default CPU value of 1")
+        cpu = 1
+    elif cpu > cpu_count() - 1:
+        print("Given cpu usage is more or equal to cpus avalable on system")
+        print(f"Setting CPU usage to {cpu_count() - 1 }")
+        cpu = cpu_count() - 1
+    else:
+        pass
+
+    seq_id_df = pd.DataFrame()  # Empty DF
     if mf:
         seq_id_df = non_overlapping_ids(asf, sa_ab1)
         if mff:
@@ -637,20 +681,37 @@ def run(sa_ab1, asf, outd, mf, mff, ss, rf):  # , fa, asb, al, bs
         else:
             print(seq_id_df)
 
-    tmp_fold = "tmp"
-    makedirs(tmp_fold, exist_ok=True)
+    tmp_fold = "/tmp"
+    if access(tmp_fold, os.W_OK):
+        tmp_fold = tmf.mkdtemp()
+    else:
+        print("/tmp is not writable. Trying current folder for temperory" " files")
+        try:
+            tmp_fold = tmf.mkdtemp(dir=".")
+        except:
+            exit("Current folder is not writable. Exiting . . . .")
 
+    # TODO: Replace with a folder in /tmp or in current
+    # makedirs(tmp_fold, exist_ok=True)
+    # TODO: Separate all the assembled sequences here and list the in array
     if not asf:
         print("Assembly folder not given. Exiting . . . . . . .")
         sys.exit(0)
     elif not path.exists(asf) or not path.isdir(asf):
         print(
-            "Given assembly folder doesn't exist or path is not a folder. \
-            Exiting . . . . ."
+            f"Given assembly folder {asf} doesn't exist or path is not a folder."
+            " Exiting . . . . ."
         )
         sys.exit(0)
     else:
-        assemblies = glob(f"{asf}/*.fasta")
+        makedirs(f"{tmp_fold}/asseblies", exist_ok=True)
+        print("Sepating assemblies . . . . .")
+        # NOTE:Different file, same ids will result in overwriting the sequences
+        for fl in glob(f"{asf}/*.fasta"):
+            for rec in SeqIO.parse(fl, "fasta"):
+                with open(f"{tmp_fold}/asseblies/{rec.id}.fasta", "w") as asbfile:
+                    asbfile.write(f">{rec.id}\n{rec.seq}\n")
+        assemblies = glob(f"{tmp_fold}/asseblies/*.fasta")
 
     # Later it can be replace with other genes
     s_gene_seq = """ATGTTTGTTTTTCTTGTTTTATTGCCACTAGTCTCTAGTCAGTGTGTT
@@ -706,7 +767,6 @@ TGGCTAGGTTTTATAGCTGGCTTGATTGCCATAGTAATGGTGACAATTATGCTTTGCTGTATGACCAGTTGCTGT
 AGTTGTCTCAAGGGCTGTTGTTCTTGTGGATCCTGCTGCAAATTTGATGAAGACGACTCTGAGCCAGTGCTCAAA
 GGAGTCAAATTACATTACACATAA"""
 
-    rf = False
     with open(f"{tmp_fold}/ref.fasta", "w") as fout:
         if not rf:
             fout.write(f">ref\n{s_gene_seq}\n")
@@ -718,8 +778,16 @@ GGAGTCAAATTACATTACACATAA"""
             for rec in SeqIO.parse(rf, "fasta"):
                 seq_count += 1
                 if seq_count > 1:
-                    exit(f"{rf} contains more than 1 sequence. Exiting.")
+                    exit(
+                        f"{rf} contains more than 1 sequence. "
+                        "Expect only one."
+                        " Exiting."
+                    )
                 fout.write(f">{rec.id}\n{rec.seq}\n")
+            if not seq_count:
+                exit(
+                    f"{rf} contains 0 (zero) sequence. " "Expect only one." " Exiting."
+                )
 
     sanger_outputs = files_and_groups(glob(f"{sa_ab1}/*"))
 
@@ -727,12 +795,13 @@ GGAGTCAAATTACATTACACATAA"""
         sanger_outputs,
         formatter(r".+/(?P<filebase>\w+).(?P<tame>\w+)"),
         "%s/{filebase[0]}.fasta" % tmp_fold,
-    )
+        extras=[tmp_fold, gaps])
     def ab1_2_fasta_r(inputfiles, outputfile):
         """TODO: Converts ab1 to fasta.
 
-        :inp: TODO
-        :returns: TODO
+        :input: ab1 file
+        :outputfile: fasta file
+        :returns: None
 
         """
         ab2fasta(inputfiles, outputfile)
@@ -742,36 +811,35 @@ GGAGTCAAATTACATTACACATAA"""
     )  # Apply merge it. Ignore  if it fails to include
     def sanger_seq_r(inputfiles, outputfile, extras):
         # print(extras, "testing Anmol")
-        if extras:
-            extras_file = open(extras, "w")
+        extras_file = open(extras, "w") if extras else None
         with open(outputfile, "w") as fout:
             for fl in inputfiles:
                 for rec in SeqIO.parse(fl, "fasta"):
                     fout.write(f">{rec.description}\n{rec.seq}\n")
-                    if extras:
+                    if extras_file:
                         coors = rec.description.split()[1:]
                         coors = int(coors[0]), int(coors[1])
                         extras_file.write(
                             f">{rec.id}\n{rec.seq[coors[0]:coors[1]]}\n")
-        if extras:
+        if extras_file:
             extras_file.close()
         # TODO: if mergeing is allow, generate a local copy
         # TODO: Get input from extras
 
     @mkdir(outd)
     @transform(
-        assemblies,
+        ab1_2_fasta_r,
         formatter(r".+/(?P<filebase>\w+)"),
-        add_inputs(sanger_seq_r),
+        # TODO: Try to infer assemblies based on this
         "%s/{filebase[0]}.fasta" % outd,
     )
-    def alignments(infiles, outfile):
-        # TODO: Add this function to run_pipeline function
-        sang_file = infiles[1]
-        assembly = infiles[0]
+    def alignments(sanger_file, outfile):
+        """Map sanger file to generated assemblies and insert sanger sequence."""
+
+        assembly = f"{tmp_fold}/asseblies/{path.split(sanger_file)[1]}"
         sanger_seq = {}
         sanger_seq_desc = {}
-        for rec in SeqIO.parse(sang_file, "fasta"):
+        for rec in SeqIO.parse(sanger_file, "fasta"):
             sanger_seq_desc[rec.id] = rec.description
             sanger_seq[rec.id] = str(rec.seq)
 
@@ -784,7 +852,7 @@ GGAGTCAAATTACATTACACATAA"""
             "blat",
             "-noHead",
             assembly,
-            sang_file,
+            sanger_file,
             f"{tmp_fold}/{flb}.psl",
         ]
         cmd(command)
@@ -826,13 +894,17 @@ GGAGTCAAATTACATTACACATAA"""
                     )
                 else:
 
-                    print("You Idiot Contact Anmol")
+                    print("Please report at a bug at")
+                    print(
+                        "https://github.com/krisp-kwazulu-natal/"
+                        "sars-cov-2-sequencing-merge-sanger/issues"
+                    )
         with open(outfile, "w") as fout:
             for k in org_seq:
                 fout.write(f">{k}\n{org_seq[k]}\n")
 
-    pipeline_run(verbose=9)
-    pipeline_printout_graph("flowchart.svg", "svg", no_key_legend=True)
+    pipeline_run(verbose=9, multithread=cpu)
+    # pipeline_printout_graph("flowchart.svg", "svg", no_key_legend=True)
 
 
 if __name__ == "__main__":
