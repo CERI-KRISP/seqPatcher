@@ -80,13 +80,6 @@ Both the tools can be either be downloaded from provided links or installed usin
 | Base A    | Base B           | Base B   |
 | Base A    | Ambi             | Base A   |
 
-# TODOs
-
-- [x] Testing
-- [x] Clean intermediate files
-- [ ] Start over option
-- [x] fix bs option after discussion with San
-
 # License
 
 GPLv3
