@@ -3,31 +3,87 @@
 # Author: Anmol Kiran
 # Affiliation: University of Liverpool. UK
 # and Malawi-Liverpool-Wellcome Trust, Malawi
-# V0.1: 20/04/2021
+# V0.0.1: 20/04/2021
 
 
 import os
 import subprocess as sb
 import sys
 from collections import defaultdict
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, Pool
 from glob import glob
 from os import makedirs, path, access
 import tempfile as tmf
+from functools import partial
+from shutil import copyfile
+from collections import ChainMap
+
 
 import click
 import numpy as np
 import pandas as pd
 from Bio import Seq, SeqIO
-from ruffus import mkdir  # 2.8.4
-from ruffus import (
-    add_inputs,
-    formatter,
-    merge,
-    pipeline_printout_graph,
-    pipeline_run,
-    transform,
-)
+
+
+__version__ = "0.0.1"
+
+_s_gene_seq = """ATGTTTGTTTTTCTTGTTTTATTGCCACTAGTCTCTAGTCAGTGTGTT
+AATCTTACAACCAGAACTCAATTACCCCCTGCATACACTAATTCTTTCACACGTGGTGTTTATTACCCTGACAAA
+GTTTTCAGATCCTCAGTTTTACATTCAACTCAGGACTTGTTCTTACCTTTCTTTTCCAATGTTACTTGGTTCCAT
+GCTATACATGTCTCTGGGACCAATGGTACTAAGAGGTTTGATAACCCTGTCCTACCATTTAATGATGGTGTTTAT
+TTTGCTTCCACTGAGAAGTCTAACATAATAAGAGGCTGGATTTTTGGTACTACTTTAGATTCGAAGACCCAGTCC
+CTACTTATTGTTAATAACGCTACTAATGTTGTTATTAAAGTCTGTGAATTTCAATTTTGTAATGATCCATTTTTG
+GGTGTTTATTACCACAAAAACAACAAAAGTTGGATGGAAAGTGAGTTCAGAGTTTATTCTAGTGCGAATAATTGC
+ACTTTTGAATATGTCTCTCAGCCTTTTCTTATGGACCTTGAAGGAAAACAGGGTAATTTCAAAAATCTTAGGGAA
+TTTGTGTTTAAGAATATTGATGGTTATTTTAAAATATATTCTAAGCACACGCCTATTAATTTAGTGCGTGATCTC
+CCTCAGGGTTTTTCGGCTTTAGAACCATTGGTAGATTTGCCAATAGGTATTAACATCACTAGGTTTCAAACTTTA
+CTTGCTTTACATAGAAGTTATTTGACTCCTGGTGATTCTTCTTCAGGTTGGACAGCTGGTGCTGCAGCTTATTAT
+GTGGGTTATCTTCAACCTAGGACTTTTCTATTAAAATATAATGAAAATGGAACCATTACAGATGCTGTAGACTGT
+GCACTTGACCCTCTCTCAGAAACAAAGTGTACGTTGAAATCCTTCACTGTAGAAAAAGGAATCTATCAAACTTCT
+AACTTTAGAGTCCAACCAACAGAATCTATTGTTAGATTTCCTAATATTACAAACTTGTGCCCTTTTGGTGAAGTT
+TTTAACGCCACCAGATTTGCATCTGTTTATGCTTGGAACAGGAAGAGAATCAGCAACTGTGTTGCTGATTATTCT
+GTCCTATATAATTCCGCATCATTTTCCACTTTTAAGTGTTATGGAGTGTCTCCTACTAAATTAAATGATCTCTGC
+TTTACTAATGTCTATGCAGATTCATTTGTAATTAGAGGTGATGAAGTCAGACAAATCGCTCCAGGGCAAACTGGA
+AAGATTGCTGATTATAATTATAAATTACCAGATGATTTTACAGGCTGCGTTATAGCTTGGAATTCTAACAATCTT
+GATTCTAAGGTTGGTGGTAATTATAATTACCTGTATAGATTGTTTAGGAAGTCTAATCTCAAACCTTTTGAGAGA
+GATATTTCAACTGAAATCTATCAGGCCGGTAGCACACCTTGTAATGGTGTTGAAGGTTTTAATTGTTACTTTCCT
+TTACAATCATATGGTTTCCAACCCACTAATGGTGTTGGTTACCAACCATACAGAGTAGTAGTACTTTCTTTTGAA
+CTTCTACATGCACCAGCAACTGTTTGTGGACCTAAAAAGTCTACTAATTTGGTTAAAAACAAATGTGTCAATTTC
+AACTTCAATGGTTTAACAGGCACAGGTGTTCTTACTGAGTCTAACAAAAAGTTTCTGCCTTTCCAACAATTTGGC
+AGAGACATTGCTGACACTACTGATGCTGTCCGTGATCCACAGACACTTGAGATTCTTGACATTACACCATGTTCT
+TTTGGTGGTGTCAGTGTTATAACACCAGGAACAAATACTTCTAACCAGGTTGCTGTTCTTTATCAGGATGTTAAC
+TGCACAGAAGTCCCTGTTGCTATTCATGCAGATCAACTTACTCCTACTTGGCGTGTTTATTCTACAGGTTCTAAT
+GTTTTTCAAACACGTGCAGGCTGTTTAATAGGGGCTGAACATGTCAACAACTCATATGAGTGTGACATACCCATT
+GGTGCAGGTATATGCGCTAGTTATCAGACTCAGACTAATTCTCCTCGGCGGGCACGTAGTGTAGCTAGTCAATCC
+ATCATTGCCTACACTATGTCACTTGGTGCAGAAAATTCAGTTGCTTACTCTAATAACTCTATTGCCATACCCACA
+AATTTTACTATTAGTGTTACCACAGAAATTCTACCAGTGTCTATGACCAAGACATCAGTAGATTGTACAATGTAC
+ATTTGTGGTGATTCAACTGAATGCAGCAATCTTTTGTTGCAATATGGCAGTTTTTGTACACAATTAAACCGTGCT
+TTAACTGGAATAGCTGTTGAACAAGACAAAAACACCCAAGAAGTTTTTGCACAAGTCAAACAAATTTACAAAACA
+CCACCAATTAAAGATTTTGGTGGTTTTAATTTTTCACAAATATTACCAGATCCATCAAAACCAAGCAAGAGGTCA
+TTTATTGAAGATCTACTTTTCAACAAAGTGACACTTGCAGATGCTGGCTTCATCAAACAATATGGTGATTGCCTT
+GGTGATATTGCTGCTAGAGACCTCATTTGTGCACAAAAGTTTAACGGCCTTACTGTTTTGCCACCTTTGCTCACA
+GATGAAATGATTGCTCAATACACTTCTGCACTGTTAGCGGGTACAATCACTTCTGGTTGGACCTTTGGTGCAGGT
+GCTGCATTACAAATACCATTTGCTATGCAAATGGCTTATAGGTTTAATGGTATTGGAGTTACACAGAATGTTCTC
+TATGAGAACCAAAAATTGATTGCCAACCAATTTAATAGTGCTATTGGCAAAATTCAAGACTCACTTTCTTCCACA
+GCAAGTGCACTTGGAAAACTTCAAGATGTGGTCAACCAAAATGCACAAGCTTTAAACACGCTTGTTAAACAACTT
+AGCTCCAATTTTGGTGCAATTTCAAGTGTTTTAAATGATATCCTTTCACGTCTTGACAAAGTTGAGGCTGAAGTG
+CAAATTGATAGGTTGATCACAGGCAGACTTCAAAGTTTGCAGACATATGTGACTCAACAATTAATTAGAGCTGCA
+GAAATCAGAGCTTCTGCTAATCTTGCTGCTACTAAAATGTCAGAGTGTGTACTTGGACAATCAAAAAGAGTTGAT
+TTTTGTGGAAAGGGCTATCATCTTATGTCCTTCCCTCAGTCAGCACCTCATGGTGTAGTCTTCTTGCATGTGACT
+TATGTCCCTGCACAAGAAAAGAACTTCACAACTGCTCCTGCCATTTGTCATGATGGAAAAGCACACTTTCCTCGT
+GAAGGTGTCTTTGTTTCAAATGGCACACACTGGTTTGTAACACAAAGGAATTTTTATGAACCACAAATCATTACT
+ACAGACAACACATTTGTGTCTGGTAACTGTGATGTTGTAATAGGAATTGTCAACAACACAGTTTATGATCCTTTG
+CAACCTGAATTAGACTCATTCAAGGAGGAGTTAGATAAATATTTTAAGAATCATACATCACCAGATGTTGATTTA
+GGTGACATCTCTGGCATTAATGCTTCAGTTGTAAACATTCAAAAAGAAATTGACCGCCTCAATGAGGTTGCCAAG
+AATTTAAATGAATCTCTCATCGATCTCCAAGAACTTGGAAAGTATGAGCAGTATATAAAATGGCCATGGTACATT
+TGGCTAGGTTTTATAGCTGGCTTGATTGCCATAGTAATGGTGACAATTATGCTTTGCTGTATGACCAGTTGCTGT
+AGTTGTCTCAAGGGCTGTTGTTCTTGTGGATCCTGCTGCAAATTTGATGAAGACGACTCTGAGCCAGTGCTCAAA
+GGAGTCAAATTACATTACACATAA"""
+
+
+def version():
+    """Prints software version."""
+    print(__version__)
 
 
 def cmd(command):
@@ -35,10 +91,92 @@ def cmd(command):
     :command: in form of list ie ['ls', '-l']
     :return: None
     """
-    sb.Popen(command, stdout=sb.DEVNULL).communicate()
+    sb.Popen(command, stdout=sb.DEVNULL, stderr=sb.DEVNULL).communicate()
 
 
-# , stderr=sb.DEVNULL
+def min_max(values):
+    """Returns minimum and maximum values in the given list/array.
+
+    :values: list/array
+    :returns: touple of min and max
+
+    """
+    return min(values), max(values)
+
+
+def end_correction(aln_df):
+    """In case of paired sequences Nucleotide will be replaced with apropriate nucleotide for simple processing
+
+    :aln_df: Unprocessed alignment dataframe
+    :returns: Processed data frame
+    :TODO: Write what is being done here
+
+    """
+
+    pass
+
+
+#           2       20
+
+
+def trim(mmcount, length, aln_df):
+    """Trim the sequence at the end based on mismatched in given length of
+
+    :mmcount: Mismatch count in given range
+    :length: Length at both end to explore
+    :returns: trimmed alignment dataframe
+
+    """
+    # aln_len = length(aln)
+    for col in aln_df.columns:
+        if col == "ref":
+            continue
+        min_, max_ = min_max(aln_df[aln_df[col] != "-"].index)
+        mismach_locations = aln_df[aln_df[col].isin("-NRYKMSWBDHV")].index
+        mismach_locations = mismach_locations[
+            (mismach_locations >= min_) & (mismach_locations <= max_)
+        ]
+        start_mismatch_location = mismach_locations[mismach_locations < length]
+        if len(start_mismatch_location) >= mmcount:
+            min_ = start_mismatch_location[-1] + 1
+        end_mismatch_locations = mismach_locations[
+            mismach_locations > (length(aln_df) - length)
+        ]
+        if len(end_mismatch_locations) >= mmcount:
+            max_ = end_mismatch_locations[0] - 1
+        aln_df.loc[:min_, col] = "-"
+        aln_df.loc[max_:, col] = "-"
+
+    return aln_df
+
+
+def codon_aln(aln_df):
+    """Correct alignment around codon
+
+    :aln_df: normal alignment dataframe
+    :returns: colodon alinment dataframe
+
+    """
+    df_shape = aln_df.shape[1]
+    non_ref_seq = [seq_id for seq_id in df_shape.columns if seq_id != "ref"]
+    if df_shape == 2:
+        aln_min, aln_max = min_max(aln_df[aln_df[non_ref_seq[0]] != "-"].index)
+        # TODO: Check whether is a 0 position if not change the locatio in no indel at next two positions
+        #
+
+        pass
+    elif df_shape == 3:
+        # TODO: Accept nucleotide at overhang and then try to change the codon alignmentt
+
+        pass
+    else:
+        pass
+
+    return
+
+
+# TODO: How many codon should be allow to be remove without replacing with N
+# TODO: Remove text from last mismatch - I don't think it will make any difference -  But allow to extend the ends for better mapping
 
 
 def ranges(lst, given_gap=0):
@@ -94,7 +232,44 @@ def df_reverse_complement(dataframe):
     return dataframe
 
 
-def ab1seq(infile, tmp_fold):
+def orient(seqfile, ref, tmp_fold):
+    """Returns orientation of the sequence"""
+    if seqfile.endswith(".ab1"):
+        flb = path.split(seqfile)[1].rsplit(".", 1)[0]
+        record = SeqIO.read(seqfile, "abi")
+        seq = "".join(
+            [chr(ascii_val)
+             for ascii_val in record.annotations["abif_raw"]["PBAS1"]]
+        )
+        with open(f"{tmp_fold}/{flb}.fasta", "w") as fout:
+            fout.write(f">tmp\n{seq}\n")
+        seqfile = f"{tmp_fold}/{flb}.fasta"
+
+    flb = path.split(seqfile)[1].rsplit(".", 1)[0]
+    command = [
+        "blat",
+        "-noHead",
+        ref,
+        seqfile,
+        f"{tmp_fold}/{flb}.psl",
+    ]  # Mapping against reference
+    cmd(command)
+    blat_df = (
+        pd.read_table(f"{tmp_fold}/{flb}.psl", header=None)
+        .sort_values(0, ascending=False)
+        .drop_duplicates(9)
+    )
+    if len(blat_df) != 1:
+        print(f"No match found of {seqfile}. Ignoring")
+        return None
+    for _, row in blat_df.iterrows():
+        if row[8] == "-":
+            return "R"
+        else:
+            return "F"
+
+
+def ab1seq(infile, tmp_fold, peak_selection=None):
     """ab1 to seq trimmed based on reference."""
 
     amb_bases = {  # All ambiguous nucleotides
@@ -126,13 +301,24 @@ def ab1seq(infile, tmp_fold):
         record.annotations["abif_raw"]["PLOC1"],
     ):
         ambi_base = chr(channel[0])
-        nuc_df["nuc"].append(ambi_base)
         if ambi_base in amb_bases:
-            td = {}  # TODO: Please check what does td reprensts
-            for base in amb_bases[ambi_base]:
-                td[base] = trace[base][channel[1]]
-            nuc_df["peak"].append(td)
+            if not peak_selection:
+                nuc_df["nuc"].append(ambi_base)
+                td = {}  # TODO: Please check what does td reprensts
+                for base in amb_bases[ambi_base]:
+                    td[base] = trace[base][channel[1]]
+                nuc_df["peak"].append(td)
+            elif peak_selection == "max":
+                tb = ""
+                td = 0
+                for base in amb_bases[ambi_base]:
+                    if td < trace[base][channel[1]]:
+                        td = trace[base][channel[1]]
+                        tb = base
+                nuc_df["nuc"].append(tb)
+                nuc_df["peak"].append({tb: td})
         else:
+            nuc_df["nuc"].append(ambi_base)
             nuc_df["peak"].append({ambi_base: trace[ambi_base][channel[1]]})
     nuc_df = pd.DataFrame(nuc_df)
     peak = nuc_df["peak"].apply(lambda x: np.mean(list(x.values()))).values
@@ -144,38 +330,8 @@ def ab1seq(infile, tmp_fold):
     )  # 1 is added as last position is not included
     nuc_df = nuc_df.loc[min_pos:max_pos]
 
-    nuc_seq = "".join(nuc_df["nuc"].values)
-
-    flb = path.split(infile)[1].split(".ab1")[
-        0
-    ]  # Consitering that the sample name is the first part
-
-    with open(f"{tmp_fold}/{flb}.fasta", "w") as fout:
-        fout.write(f">{flb}\n{nuc_seq}\n")
-
-    command = [
-        "blat",
-        "-noHead",
-        f"{tmp_fold}/ref.fasta",
-        f"{tmp_fold}/{flb}.fasta",
-        f"{tmp_fold}/{flb}.psl",
-    ]  # Mapping against reference
-    cmd(command)
-    blat_df = (
-        pd.read_table(f"{tmp_fold}/{flb}.psl", header=None)
-        .sort_values(0, ascending=False)
-        .drop_duplicates(9)
-    )
-    if len(blat_df) != 1:
-        print(
-            f"Looks like {infile} has multiple sequences. \
-                    Please check. Exiting . . . . . "
-        )
-        sys.exit(0)
-
-    for _, row in blat_df.iterrows():
-        if row[8] == "-":
-            nuc_df = df_reverse_complement(nuc_df)
+    if infile.endswith(".R.ab1"):
+        nuc_df = df_reverse_complement(nuc_df)
     return nuc_df
 
 
@@ -194,8 +350,13 @@ def aln_df_with_ref(seq_dict, flb, tmp_fold):
     return pd.DataFrame(sequences)
 
 
+# TODO: Give pririty of forwarwd for for the begining and reverse for the end side
+# TODO: Trimming of paired depends on overhangn and given deletetion length
+
+
 def merge_base_peak(nuc_df, peak_dict):
     """Merge the peak related information in nucleotide dataframe."""
+    # NOTE: Useful only when there is ambigiuity in the base call, rest remove to save memory
 
     nuc_df["idx"] = list(nuc_df.index)
 
@@ -216,19 +377,23 @@ def aln_clean(aln_df):
     """Clearning alihnment dataframe to remove unneccessary gaps and
     alignements."""
     one_side = ["1"]
+    print(aln_df)
     if aln_df.shape[1] == 5:
-        idx = aln_df[aln_df["1_nuc"] != "-"].index
+        if "F_nuc" in aln_df:
+            idx = aln_df[aln_df["F_nuc"] != "-"].index
+        else:
+            idx = aln_df[aln_df["R_nuc"] != "-"].index
     else:
         one_side.append("2")
         # NOTE: Considering both sequences should overlap
-        # idx = aln_df[~((aln_df["1_nuc"] == "-") | (aln_df["2_nuc"] == "-"))].index
+        # idx = aln_df[~((aln_df["F_nuc"] == "-") | (aln_df["2_nuc"] == "-"))].index
         # NOTE: Considering either sequence overlapping regions
-        idx = aln_df[~((aln_df["1_nuc"] == "-") &
-                       (aln_df["2_nuc"] == "-"))].index
+        idx = aln_df[~((aln_df["F_nuc"] == "-") &
+                       (aln_df["R_nuc"] == "-"))].index
         # TODO: Use below code if other team members allow
         # Checking with gap with common 3 nuc length gaps
-        idx3 = aln_df[(aln_df["1_nuc"] == "-") &
-                      (aln_df["2_nuc"] == "-")].index
+        idx3 = aln_df[(aln_df["F_nuc"] == "-") &
+                      (aln_df["R_nuc"] == "-")].index
         u3_range = list(useful_range(list(idx3), 1))
         # TODO: Select ranges with length of 3 and push them in the sequences
 
@@ -236,13 +401,14 @@ def aln_clean(aln_df):
     # Add the importnat gap. Default: 10
     if len(one_side) == 1:
         # Avoid erroneous alignments at the end
+        col_present = "F_nuc" if "F_nuc" in aln_df else "R_nuc"
         temp_aln_df = aln_df.loc[u_range[0]: u_range[0] + 8]
-        if list(temp_aln_df["1_nuc"].values) != list(temp_aln_df["ref"].values):
-            aln_df.loc[u_range[0]: u_range[0] + 8, "1_nuc"] = "-"
+        if list(temp_aln_df[col_present].values) != list(temp_aln_df["ref"].values):
+            aln_df.loc[u_range[0]: u_range[0] + 8, col_present] = "-"
             u_range[0] += 9
         temp_aln_df = aln_df.loc[u_range[1] - 8: u_range[1]]
-        if list(temp_aln_df["1_nuc"].values) != list(temp_aln_df["ref"].values):
-            aln_df.loc[u_range[1] - 8: u_range[1], "1_nuc"] = "-"
+        if list(temp_aln_df[col_present].values) != list(temp_aln_df["ref"].values):
+            aln_df.loc[u_range[1] - 8: u_range[1], col_present] = "-"
             u_range[1] -= 9
 
     for col in aln_df.columns:
@@ -259,34 +425,35 @@ def aln_clean(aln_df):
         if lst["ref"] == "-":
             return "-"
         if (
-            (lst["1_nuc"] == lst["2_nuc"] == "-")
-            or (lst["1_nuc"] != lst["2_nuc"] == lst["ref"])
-            or (lst["2_nuc"] != lst["1_nuc"] == lst["ref"])
-            or (lst["2_nuc"] == lst["1_nuc"] == lst["ref"])
-            or (lst["2_nuc"] != lst["1_nuc"] != lst["ref"])
-            or ((lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] not in "ACGT-"))
+            (lst["F_nuc"] == lst["R_nuc"] == "-")
+            or (lst["F_nuc"] != lst["R_nuc"] == lst["ref"])
+            or (lst["R_nuc"] != lst["F_nuc"] == lst["ref"])
+            or (lst["R_nuc"] == lst["F_nuc"] == lst["ref"])
+            or (lst["R_nuc"] != lst["F_nuc"] != lst["ref"])
+            or ((lst["R_nuc"] not in "ACGT-") and (lst["F_nuc"] not in "ACGT-"))
         ):
             return lst["ref"]
-        if lst["1_nuc"] == lst["2_nuc"] != lst["ref"]:
-            return lst["1_nuc"]
-        # if (lst["2_nuc"] not in "ACGT-") and (lst["1_nuc"] in "ACGT"):
-        if (lst["2_nuc"] not in "ACGT") and (lst["1_nuc"] in "ACGT"):
+        if lst["F_nuc"] == lst["R_nuc"] != lst["ref"]:
+            return lst["F_nuc"]
+        # if (lst["R_nuc"] not in "ACGT-") and (lst["F_nuc"] in "ACGT"):
+        if (lst["R_nuc"] not in "ACGT") and (lst["F_nuc"] in "ACGT"):
             # NOTE: alowing gap in one base
-            return lst["1_nuc"]
-        # if (lst["1_nuc"] not in "ACGT-") and (lst["2_nuc"] in "ACGT"):
-        if (lst["1_nuc"] not in "ACGT") and (lst["2_nuc"] in "ACGT"):
+            return lst["F_nuc"]
+        # if (lst["F_nuc"] not in "ACGT-") and (lst["R_nuc"] in "ACGT"):
+        if (lst["F_nuc"] not in "ACGT") and (lst["R_nuc"] in "ACGT"):
             # NOTE: alowing gap in one base
-            return lst["2_nuc"]
+            return lst["R_nuc"]
         # TODO: What should be returned when nothing works??
 
     def rep_single_base(lst):
         if lst["ref"] == "-":
             return "-"
-        if (lst["1_nuc"] == "-") or (lst["1_nuc"] == lst["ref"]):
+        col_present = "F_nuc" if "F_nuc" in lst else "R_nuc"
+        if (lst[col_present] == "-") or (lst[col_present] == lst["ref"]):
             return lst["ref"]
-        if lst["1_nuc"] not in "ACGT-":
+        if lst[col_present] not in "ACGT-":
             return lst["ref"]
-        return lst["1_nuc"]
+        return lst[col_present]
 
     if len(one_side) > 1:
         aln_df["rep"] = aln_df.apply(rep_paired_base, axis=1)
@@ -296,56 +463,87 @@ def aln_clean(aln_df):
     return aln_df, u_range
 
 
-def fasta_map2ref(*args):
+def fasta_map2ref(infile, gap, tmp_fold):
     # TODO: Use some part for arranging the sequence
-    """Generate ouput file, sanger fasta integrated in refgne with range is
-    description
+    """Integrates Sanger fasta to refgene
 
     :args: infile, outfile, tmp_fold, idb, gap
 
-    :returns: None
 
     """
-    infile, outfile, tmp_fold, idb, gap = args
-    fout = path.split(infile)[1] + ".psl"
-    fout = f"{tmp_fold}/{fout}"
-    command = [
-        "blat",
-        "-noHead",
-        f"{tmp_fold}/ref.fasta",
-        infile,
-        fout,
-    ]
-
-    cmd(command)
-    blat_df = pd.read_table(fout, header=None)
-    blat_df = blat_df.sort_values(0, ascending=False)
-    blat_df = blat_df.drop_duplicates(9).head(
-        1)  # NOTE:Considering only best match
-
     sequences = {}
-    flb = ""
     for rec in SeqIO.parse(infile, "fasta"):
-        sequences[rec.id] = rec.seq
-        flb = rec.id
+        if infile.endswith(".R.fasta"):  # Generates revese complement
+            sequences[rec.id] = rec.seq.reverse_complement()
+        else:
+            sequences[rec.id] = rec.seq
+
     for rec in SeqIO.parse(f"{tmp_fold}/ref.fasta", "fasta"):
         sequences["ref"] = rec.seq
 
-    for _, row in blat_df.iterrows():
-        if row[8] == "-":
-            sequences[row[9]] = sequences[row[9]].reverse_complement()
+    flb = path.split(infile)[1].split(".")[0]
+
     aln_df = aln_df_with_ref(sequences, flb, tmp_fold)
     mapped_index = aln_df[aln_df[flb] != "-"].index
     u_range = useful_range(mapped_index, gap)
-    ref = "".join(aln_df["ref"])
-    seq = "".join(aln_df[flb])
-    seq = ref[: u_range[0]] + seq[u_range[0]: u_range[1]] + ref[u_range[1]:]
+    aln_df["concensus"] = "-"
+    aln_df.loc[: u_range[0], "concensus"] = aln_df.loc[: u_range[0], "ref"]
+    aln_df.loc[u_range[0]: u_range[1], "concensus"] = aln_df.loc[
+        u_range[0]: u_range[1], flb
+    ]
+    aln_df.loc[u_range[1]:, "concensus"] = aln_df.loc[u_range[1]:, "ref"]
+
+    ["del", "ins", "both"]
+    # TODO: Come back here
+    # TODO: trim ends
+    idb = None
+    n3 = True
+    if idb in ["del", "both"]:
+        del_sites = aln_df[aln_df[flb] == "-"].index
+        del_ranges = ranges(del_sites)
+        del_ranges = [
+            rng for rng in del_ranges if (rng[0] > u_range[0] & rng[1] < u_range[1])
+        ]
+        # Del codon is accepted when codon deletion is allowed else deletions are filled with gaps
+        for rng in del_ranges:
+            if n3:
+                if (rng[1] - rng[0] + 1) % 3 != 0:
+                    aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
+                        rng[0]: rng[1], "ref"
+                    ]
+            else:
+                aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
+                    rng[0]: rng[1], "ref"
+                ]
+
+    if idb in ["ins", "both"]:
+        ins_sites = aln_df[aln_df["ref"] == "-"].index
+        ins_ranges = ranges(ins_sites)
+        ins_ranges = [
+            rng for rng in ins_ranges if (rng[0] > u_range[0] & rng[1] < u_range[1])
+        ]
+        for rng in ins_ranges:
+            if n3:
+                if (rng[1] - rng[0] + 1) % 3 != 0:
+                    aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
+                        rng[0]: rng[1], "ref"
+                    ]
+            else:
+                aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
+                    rng[0]: rng[1], "ref"
+                ]
+
+    # ref = "".join(aln_df["ref"])
+    # seq = "".join(aln_df[flb])
+    # seq = ref[: u_range[0]] + seq[u_range[0]: u_range[1]] + ref[u_range[1]:]
+    seq = "".join(aln_df["concensus"])
+    outfile = f"{tmp_fold}/sanger_converted_fasta/{flb}.fasta"
 
     with open(outfile, "w") as fout:
         fout.write(f">{flb} {u_range[0]} {u_range[1]}\n{seq}\n")
 
 
-def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
+def ab1_2seq_map2ref(infiles, gap, tmp_fold):
     """TODO: Docstring for ab1_2seq.
 
     :infiles: TODO
@@ -355,9 +553,14 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
     ab1seq_dfs = {}
     tsequences = {}
     flb = path.split(infiles[0])[1].split(".")[0]
-    for i, fl in enumerate(infiles, start=1):
-        ab1seq_dfs[i] = ab1seq(fl, tmp_fold)  # TODO: add the condition
-        tsequences[i] = "".join(ab1seq_dfs[i]["nuc"].values)
+    for fl in infiles:
+        if fl.endswith(".F.ab1"):
+            ab1seq_dfs["F"] = ab1seq(fl, tmp_fold)  # TODO: add the condition
+            tsequences["F"] = "".join(ab1seq_dfs["F"]["nuc"].values)
+        else:
+            ab1seq_dfs["R"] = ab1seq(fl, tmp_fold)
+            tsequences["R"] = "".join(ab1seq_dfs["R"]["nuc"].values)
+    # TODO: Keep the ref name as ref
     for rec in SeqIO.parse(f"{tmp_fold}/ref.fasta", "fasta"):
         tsequences[rec.id] = str(rec.seq)
 
@@ -367,15 +570,15 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
     aln_with_peak = merge_base_peak(
         aln_df_with_ref(tsequences, flb, tmp_fold), ab1seq_dfs
     )
-    for n in ["1", "2"]:
+    for n in ["F", "R"]:
         cl = f"{n}_nuc"
-        if cl in aln_with_peak.columns:
+        if cl in aln_with_peak:
             aln_with_peak.loc[pd.isnull(aln_with_peak[cl]), cl] = "-"
     aln_with_peak, u_range = aln_clean(aln_with_peak)
-    if "2_nuc" in aln_with_peak.columns:
+    if "R_nuc" in aln_with_peak and "F_nuc" in aln_with_peak:
         usr = ranges(
             aln_with_peak[
-                aln_with_peak[["ref", "1_nuc", "2_nuc"]].apply(
+                aln_with_peak[["ref", "F_nuc", "R_nuc"]].apply(
                     lambda row: True if "-" in list(row.values) else False,
                     axis=1,
                 )
@@ -383,30 +586,35 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
             10,
         )  # TODO Idiot fix it
     else:
+        col_present = "F_nuc" if "F_nuc" in aln_with_peak else "R_nuc"
         usr = ranges(
             aln_with_peak[
-                aln_with_peak[["ref", "1_nuc"]].apply(
+                aln_with_peak[["ref", col_present]].apply(
                     lambda row: True if "-" in list(row.values) else False,
                     axis=1,
                 )
             ].index,
             10,
         )  # TODO: Idiot fix it
+
     if usr:
         for us in usr:
-            if "2_nuc" in aln_with_peak.columns:
-                if "".join(aln_with_peak.loc[us[0]: us[1], "1_nuc"].values) == "".join(
-                    aln_with_peak.loc[us[0]: us[1], "2_nuc"].values
+            if "R_nuc" in aln_with_peak and "F_nuc" in aln_with_peak:
+                if "".join(aln_with_peak.loc[us[0]: us[1], "F_nuc"].values) == "".join(
+                    aln_with_peak.loc[us[0]: us[1], "R_nuc"].values
                 ):
                     aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
-                        us[0]: us[1], "1_nuc"
+                        us[0]: us[1], "F_nuc"
                     ].values
             else:
+                # NOTE: Something is wrong here
                 aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
                     us[0]: us[1], "ref"
                 ].values
     seq = "".join(list(aln_with_peak["rep"].values))
     # TODO: Generate sequence and exit
+    outfile = path.split(infiles[0])[1].split(".")[0]
+    outfile = f"{tmp_fold}/sanger_converted_fasta/{outfile}.fasta"
 
     output_file = open(outfile, "w")
     output_file.write(f">{flb} {u_range[0]} {u_range[1]}\n{seq}\n")
@@ -414,17 +622,18 @@ def ab1_2seq_map2ref(infiles, outfile, tmp_fold):
 
 
 def ab2fasta(
-    infiles, outfile  # , bc="neigh"
+    sang_dict, tmp_fold, gap, key  # , bc="neigh"
 ):  # Base criteria, max, neighbors, mixed # Inputfiles paired and none paired
+    # sanger_outputs, tmp_fold, gap
     """Retains fasta and converts ab1 to fasta"""
-    tmp_fold = path.split(outfile)[0]
+    print(key, sang_dict)
+    infiles = sang_dict[key]
 
-    if len(infiles) == 1:
-        if infiles[0].endswith(".fasta"):
-            fasta_map2ref(infiles[0], outfile, tmp_fold)
+    if len(infiles) == 1 and infiles[0].endswith(".fasta"):
+        fasta_map2ref(infiles[0], gap, tmp_fold)
 
     else:
-        ab1_2seq_map2ref(infiles, outfile, tmp_fold)
+        ab1_2seq_map2ref(infiles, gap, tmp_fold)
 
 
 def files_and_groups(sanger_files):
@@ -437,40 +646,11 @@ def files_and_groups(sanger_files):
     file_groups = {}
     for file_ in sanger_files:
         flx = path.split(file_)[1]
-        if flx.endswith(".fasta"):
-            flb = flx.split(".fasta")[0]
-        # TODO: Auto detect forward and reverse
-        elif flx.endswith(".ab1"):
-            if flx.endswith("_F.ab1"):
-                flb = flx.split("_F.ab1")[0]  # Fist part should be the name
-            elif flx.endswith("_R.ab1"):
-                flb = flx.split("_F.ab1")[0]
-            else:
-                print(f"{file_} file is not registered as forward or reverse.")
-            # TODO: Perform pairwise corrections
-        else:
-            print(f"{file_} doesn't have fasta or ab1 extention. Ignoring")
-            continue
+        flb = flx.split(".")[0]
         if flb not in file_groups:
             file_groups[flb] = []
         file_groups[flb].append(file_)
-    for group in file_groups:
-        if len(file_groups[group]) > 2:
-            print(
-                f"{len(file_groups[group])} files ({file_groups[group]}) are"
-                f" associated with id: {group}. Expecting 1 fasta or 2 ab1"
-                " files only"
-            )
-            sys.exit(0)
-    for group in file_groups:
-        filetype = []
-        for file_ in file_groups[group]:
-            filetype.append(file_.split(".")[-1])
-        if len(set(filetype)) != 1:
-            print("Multiple fileformat for {k}. Exiting . . . . . . ")
-            sys.exit(0)
-    sanger_outputs = list(file_groups.values())
-    return sanger_outputs
+    return file_groups
 
 
 def non_overlapping_ids(asseblies, ab1s):
@@ -481,26 +661,31 @@ def non_overlapping_ids(asseblies, ab1s):
     :returns: Pandas dataframe
 
     """
+    # Assembly IDS
     assembly_ids = []
     for fl in glob(f"{asseblies}/*.fasta"):
         for rec in SeqIO.parse(fl, "fasta"):
             assembly_ids.append(rec.id)
 
+    # Sanger sequences IDs
     sanger_fasta = []
     for fl in glob(f"{ab1s}/*.fasta"):
         for rec in SeqIO.parse(fl, "fasta"):
             sanger_fasta.append(rec.id)
     sanger_fasta_missing_assembly = ",".join(
         set(sanger_fasta) - set(assembly_ids))
-    sanger_ab1_f = []
 
-    for fl in glob(f"{ab1s}/*.ab1"):
-        sanger_ab1_f.append(path.split(fl)[1].split("_F.ab1")[0])
+    # Sanger forward ab1 IDs
+    sanger_ab1_f = []
+    for fl in glob(f"{ab1s}/*.F.ab1"):
+        sanger_ab1_f.append(path.split(fl)[1].split(".F.ab1")[0])
     sanger_ab1_f_missing_assembly = ",".join(
         set(sanger_fasta) - set(sanger_ab1_f))
+
+    # Sanger Reverse ab1 IDs
     sanger_ab1_r = []
-    for fl in glob(f"{ab1s}/*_R.ab1"):
-        sanger_ab1_r.append(path.split(fl)[1].split("_R.ab1")[0])
+    for fl in glob(f"{ab1s}/*.R.ab1"):
+        sanger_ab1_r.append(path.split(fl)[1].split(".R.ab1")[0])
     sanger_ab1_r_missing_assembly = ",".join(
         set(sanger_fasta) - set(sanger_ab1_r))
 
@@ -508,6 +693,7 @@ def non_overlapping_ids(asseblies, ab1s):
                   "ab1_Reverse": [], "fasta": []}
     for assembly_id in assembly_ids:
         data_frame["assembly"].append(assembly_id)
+
         if assembly_id in sanger_ab1_f:
             data_frame["ab1_Forward"].append(1)
         else:
@@ -523,11 +709,102 @@ def non_overlapping_ids(asseblies, ab1s):
         else:
             data_frame["fasta"].append(0)
 
-    data_frame["assembly"].append("No Assembly")
-    data_frame["ab1_Forward"].append(sanger_ab1_f_missing_assembly)
-    data_frame["ab1_Reverse"].append(sanger_ab1_r_missing_assembly)
-    data_frame["fasta"].append(sanger_fasta_missing_assembly)
-    return pd.DataFrame(data_frame)
+    deduct = False
+
+    if (
+        sanger_ab1_f_missing_assembly
+        or sanger_ab1_r_missing_assembly
+        or sanger_fasta_missing_assembly
+    ):
+        deduct = True
+        data_frame["assembly"].append("No Assembly")
+        data_frame["ab1_Forward"].append(sanger_ab1_f_missing_assembly)
+        data_frame["ab1_Reverse"].append(sanger_ab1_r_missing_assembly)
+        data_frame["fasta"].append(sanger_fasta_missing_assembly)
+
+    data_frame = pd.DataFrame(data_frame)
+
+    # Check for overlap
+    if deduct:
+        is_overlap = (
+            data_frame.iloc[:-1][["ab1_Forward",
+                                  "ab1_Reverse", "fasta"]].sum().sum()
+        )
+    else:
+        is_overlap = data_frame[["ab1_Forward",
+                                 "ab1_Reverse", "fasta"]].sum().sum()
+
+    if not is_overlap:
+        return pd.DataFrame()
+    return data_frame
+
+
+def integrate_in_assembly(outputfold, tmp_fold, sample_id):
+    """Mergre sange sequences in NGS assemblies
+    :outputfold: Final output folder
+    :tempfold: Intermediate files generated by other part of the script
+    :sample_id: Sample with NGS assembly and sange sequencing
+
+    """
+    # TODO: create psl folder in temp folder
+
+    assembly = f"{tmp_fold}/assemblies/{sample_id}.fasta"
+    sanger = f"{tmp_fold}/sanger_converted_fasta/{sample_id}.fasta"
+    psl_file = f"{tmp_fold}/tmp/{sample_id}.psl"
+    command = ["blat", "-noHead", assembly, sanger, psl_file]
+    cmd(command)
+
+    sanger_seq = {}
+    sanger_seq_desc = {}
+    for rec in SeqIO.parse(sanger, "fasta"):
+        sanger_seq_desc[rec.id] = rec.description
+        sanger_seq[rec.id] = str(rec.seq)
+    org_seq = {}
+    for rec in SeqIO.parse(assembly, "fasta"):
+        org_seq[rec.id] = str(rec.seq)
+    blat_df = pd.read_table(psl_file, header=None)
+
+    blat_df = (
+        blat_df[blat_df[9] == blat_df[13]]
+        .sort_values(0, ascending=False)
+        .drop_duplicates(9)
+    )
+
+    for _, row in blat_df.iterrows():
+        start, end = list(map(int, sanger_seq_desc[row[9]].split()[1:]))
+        if row[11] == 0:
+            org_seq[row[9]] = (
+                org_seq[row[9]][: row[15] + start]
+                + sanger_seq[row[9]][start: end + 1]
+                + org_seq[row[9]][row[15] + end + 1:]
+            )
+
+        elif row[12] == row[10]:
+            org_seq[row[9]] = (
+                org_seq[row[9]][: row[16] - (row[10] - start)]
+                + sanger_seq[row[9]][start: end + 1]
+                + org_seq[row[9]][row[16] - (row[10] - end - 1):]
+            )
+        else:
+            if start >= row[11]:
+                org_seq[row[9]] = (
+                    org_seq[row[9]][: row[15] + start]
+                    + sanger_seq[row[9]][start: end + 1]
+                    + org_seq[row[9]][row[15] + end + 1:]
+                )
+            elif end < row[10]:
+                org_seq[row[9]] = (
+                    org_seq[row[9]][: row[16] - (row[10] - start)]
+                    + sanger_seq[row[9]][start: end + 1]
+                    + org_seq[row[9]][row[16] - (row[10] - end - 1):]
+                )
+            else:
+
+                print("Please report at a bug at")
+                print("https://github.com/krisp-kwazulu-natal/" "seqPatcher/issues")
+    with open(f"{outputfold}/{sample_id}.fasta", "w") as fout:
+        for k in org_seq:
+            fout.write(f">{k}\n{org_seq[k]}\n")
 
 
 @click.command()
@@ -537,7 +814,7 @@ def non_overlapping_ids(asseblies, ab1s):
     "sa_ab1",
     help="ab1 folder or sanger sequence file",
     type=str,
-    default="unitest/ab1_paired/ab1",
+    default="sanger_ab1",
     show_default=True,
 )  # Convert this to folder
 # "/home/devil/Documents/San/Corona/Merging/Sanger/12April2021"
@@ -567,22 +844,22 @@ def non_overlapping_ids(asseblies, ab1s):
     default="Results",
     show_default=True,
 )
-@click.option(
-    "-r",
-    "--unpaired-ids",
-    "mf",
-    help="Report none ovelapping and IDs missing sanger seq",
-    type=bool,
-    default=True,
-    show_default=True,
-)
+# @click.option(
+# "-r",
+# "--unpaired-ids",
+# "mf",
+# help="Report (none)-ovelapping IDs missing sanger seq as table",
+# type=bool,
+# default=True,
+# show_default=True,
+# )
 @click.option(
     "-t",
-    "--missmatch-table",
-    "mff",
-    help="Mismatch id table csv file",
+    "--tab",
+    "tab",
+    help="CSV file for overlapping assemblies and sanger ids." " If not given, stdout.",
     type=str,
-    default="mmf.csv",
+    default=None,
     show_default=True,
 )
 @click.option(
@@ -603,15 +880,15 @@ def non_overlapping_ids(asseblies, ab1s):
     default=None,
     show_default=True,
 )
-@click.option(
-    "-n",
-    "--cpu",
-    "cpu",
-    help="Number of CPU to use",
-    type=int,
-    default=1,
-    show_default=True,
-)
+# @click.option(
+# "-n",
+# "--cpu",
+# "cpu",
+# help="Number of CPU to use",
+# type=int,
+# default=1,
+# show_default=True,
+# )
 @click.option(
     "-c",
     "--clean-intermediate",
@@ -634,7 +911,7 @@ def non_overlapping_ids(asseblies, ab1s):
     "-3",
     "--only-3-nuc",
     "n3",
-    help="Allow gap of 3 nucleotide (only if supported by both forward and reverse)",
+    help="Allow gap of 3 nucleotide (only if supported by both forward and reverse in paired data)",
     type=bool,
     default=True,
     show_default=True,
@@ -649,7 +926,9 @@ def non_overlapping_ids(asseblies, ab1s):
     show_default=True,
     multiple=False,
 )
-def run(sa_ab1, asf, outd, mf, mff, ss, rf, cpu, ci, gap, n3, idb):  # , fa, asb, al, bs
+# TODO: Implement version option
+def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bscpu,
+    # print(sa_ab1, asf, outd, tab, ss, rf, cpu, ci, gap, n3, idb)
     # TODO: Allowing insertion details only
     """
     Convert ab1 to Fasta based given parameters. must contain original
@@ -662,118 +941,82 @@ def run(sa_ab1, asf, outd, mf, mff, ss, rf, cpu, ci, gap, n3, idb):  # , fa, asb
     neigh: earlier peak if ambiguous nucleotide contain earlier base
     ref: Use reference base in case of ambiguity
     """
-    if cpu < 1:
-        print("Number of CPU use given is < 1.")
-        print("Using default CPU value of 1")
-        cpu = 1
-    elif cpu > cpu_count() - 1:
-        print("Given cpu usage is more or equal to cpus avalable on system")
-        print(f"Setting CPU usage to {cpu_count() - 1 }")
-        cpu = cpu_count() - 1
-    else:
-        pass
+    # if cpu < 1:
+    # print("Number of CPU use given is < 1.")
+    # print("Using default CPU value of 1")
+    # cpu = 1
+    # elif cpu > cpu_count() - 1:
+    # print("Given cpu usage is more or equal to cpus avalable on system")
+    # print(f"Setting CPU usage to {cpu_count() - 1 }")
+    # cpu = cpu_count() - 1
+    # else:
+    # pass
 
-    seq_id_df = pd.DataFrame()  # Empty DF
-    if mf:
-        seq_id_df = non_overlapping_ids(asf, sa_ab1)
-        if mff:
-            seq_id_df.to_csv(mff, index=False)
-        else:
-            print(seq_id_df)
+    # pool = Pool(cpu)
 
-    tmp_fold = "/tmp"
-    if access(tmp_fold, os.W_OK):
-        tmp_fold = tmf.mkdtemp()
-    else:
-        print("/tmp is not writable. Trying current folder for temperory" " files")
-        try:
-            tmp_fold = tmf.mkdtemp(dir=".")
-        except:
-            exit("Current folder is not writable. Exiting . . . .")
+    if not sa_ab1:
+        exit("Sanger data folder is not given. Exiting . . . .")
+    if not path.exists(sa_ab1) or not path.isdir(sa_ab1):
+        exit(
+            f"Given sanger data folder {sa_ab1} doesn't exist or path is not a folder."
+            " Exiting . . . . ."
+        )
 
-    # TODO: Replace with a folder in /tmp or in current
-    # makedirs(tmp_fold, exist_ok=True)
-    # TODO: Separate all the assembled sequences here and list the in array
     if not asf:
-        print("Assembly folder not given. Exiting . . . . . . .")
-        sys.exit(0)
-    elif not path.exists(asf) or not path.isdir(asf):
-        print(
+        exit("Assembly folder not given. Exiting . . . . . . .")
+    if not path.exists(asf) or not path.isdir(asf):
+        exit(
             f"Given assembly folder {asf} doesn't exist or path is not a folder."
             " Exiting . . . . ."
         )
-        sys.exit(0)
-    else:
-        makedirs(f"{tmp_fold}/asseblies", exist_ok=True)
-        print("Sepating assemblies . . . . .")
-        # NOTE:Different file, same ids will result in overwriting the sequences
-        for fl in glob(f"{asf}/*.fasta"):
-            for rec in SeqIO.parse(fl, "fasta"):
-                with open(f"{tmp_fold}/asseblies/{rec.id}.fasta", "w") as asbfile:
-                    asbfile.write(f">{rec.id}\n{rec.seq}\n")
-        assemblies = glob(f"{tmp_fold}/asseblies/*.fasta")
 
-    # Later it can be replace with other genes
-    s_gene_seq = """ATGTTTGTTTTTCTTGTTTTATTGCCACTAGTCTCTAGTCAGTGTGTT
-AATCTTACAACCAGAACTCAATTACCCCCTGCATACACTAATTCTTTCACACGTGGTGTTTATTACCCTGACAAA
-GTTTTCAGATCCTCAGTTTTACATTCAACTCAGGACTTGTTCTTACCTTTCTTTTCCAATGTTACTTGGTTCCAT
-GCTATACATGTCTCTGGGACCAATGGTACTAAGAGGTTTGATAACCCTGTCCTACCATTTAATGATGGTGTTTAT
-TTTGCTTCCACTGAGAAGTCTAACATAATAAGAGGCTGGATTTTTGGTACTACTTTAGATTCGAAGACCCAGTCC
-CTACTTATTGTTAATAACGCTACTAATGTTGTTATTAAAGTCTGTGAATTTCAATTTTGTAATGATCCATTTTTG
-GGTGTTTATTACCACAAAAACAACAAAAGTTGGATGGAAAGTGAGTTCAGAGTTTATTCTAGTGCGAATAATTGC
-ACTTTTGAATATGTCTCTCAGCCTTTTCTTATGGACCTTGAAGGAAAACAGGGTAATTTCAAAAATCTTAGGGAA
-TTTGTGTTTAAGAATATTGATGGTTATTTTAAAATATATTCTAAGCACACGCCTATTAATTTAGTGCGTGATCTC
-CCTCAGGGTTTTTCGGCTTTAGAACCATTGGTAGATTTGCCAATAGGTATTAACATCACTAGGTTTCAAACTTTA
-CTTGCTTTACATAGAAGTTATTTGACTCCTGGTGATTCTTCTTCAGGTTGGACAGCTGGTGCTGCAGCTTATTAT
-GTGGGTTATCTTCAACCTAGGACTTTTCTATTAAAATATAATGAAAATGGAACCATTACAGATGCTGTAGACTGT
-GCACTTGACCCTCTCTCAGAAACAAAGTGTACGTTGAAATCCTTCACTGTAGAAAAAGGAATCTATCAAACTTCT
-AACTTTAGAGTCCAACCAACAGAATCTATTGTTAGATTTCCTAATATTACAAACTTGTGCCCTTTTGGTGAAGTT
-TTTAACGCCACCAGATTTGCATCTGTTTATGCTTGGAACAGGAAGAGAATCAGCAACTGTGTTGCTGATTATTCT
-GTCCTATATAATTCCGCATCATTTTCCACTTTTAAGTGTTATGGAGTGTCTCCTACTAAATTAAATGATCTCTGC
-TTTACTAATGTCTATGCAGATTCATTTGTAATTAGAGGTGATGAAGTCAGACAAATCGCTCCAGGGCAAACTGGA
-AAGATTGCTGATTATAATTATAAATTACCAGATGATTTTACAGGCTGCGTTATAGCTTGGAATTCTAACAATCTT
-GATTCTAAGGTTGGTGGTAATTATAATTACCTGTATAGATTGTTTAGGAAGTCTAATCTCAAACCTTTTGAGAGA
-GATATTTCAACTGAAATCTATCAGGCCGGTAGCACACCTTGTAATGGTGTTGAAGGTTTTAATTGTTACTTTCCT
-TTACAATCATATGGTTTCCAACCCACTAATGGTGTTGGTTACCAACCATACAGAGTAGTAGTACTTTCTTTTGAA
-CTTCTACATGCACCAGCAACTGTTTGTGGACCTAAAAAGTCTACTAATTTGGTTAAAAACAAATGTGTCAATTTC
-AACTTCAATGGTTTAACAGGCACAGGTGTTCTTACTGAGTCTAACAAAAAGTTTCTGCCTTTCCAACAATTTGGC
-AGAGACATTGCTGACACTACTGATGCTGTCCGTGATCCACAGACACTTGAGATTCTTGACATTACACCATGTTCT
-TTTGGTGGTGTCAGTGTTATAACACCAGGAACAAATACTTCTAACCAGGTTGCTGTTCTTTATCAGGATGTTAAC
-TGCACAGAAGTCCCTGTTGCTATTCATGCAGATCAACTTACTCCTACTTGGCGTGTTTATTCTACAGGTTCTAAT
-GTTTTTCAAACACGTGCAGGCTGTTTAATAGGGGCTGAACATGTCAACAACTCATATGAGTGTGACATACCCATT
-GGTGCAGGTATATGCGCTAGTTATCAGACTCAGACTAATTCTCCTCGGCGGGCACGTAGTGTAGCTAGTCAATCC
-ATCATTGCCTACACTATGTCACTTGGTGCAGAAAATTCAGTTGCTTACTCTAATAACTCTATTGCCATACCCACA
-AATTTTACTATTAGTGTTACCACAGAAATTCTACCAGTGTCTATGACCAAGACATCAGTAGATTGTACAATGTAC
-ATTTGTGGTGATTCAACTGAATGCAGCAATCTTTTGTTGCAATATGGCAGTTTTTGTACACAATTAAACCGTGCT
-TTAACTGGAATAGCTGTTGAACAAGACAAAAACACCCAAGAAGTTTTTGCACAAGTCAAACAAATTTACAAAACA
-CCACCAATTAAAGATTTTGGTGGTTTTAATTTTTCACAAATATTACCAGATCCATCAAAACCAAGCAAGAGGTCA
-TTTATTGAAGATCTACTTTTCAACAAAGTGACACTTGCAGATGCTGGCTTCATCAAACAATATGGTGATTGCCTT
-GGTGATATTGCTGCTAGAGACCTCATTTGTGCACAAAAGTTTAACGGCCTTACTGTTTTGCCACCTTTGCTCACA
-GATGAAATGATTGCTCAATACACTTCTGCACTGTTAGCGGGTACAATCACTTCTGGTTGGACCTTTGGTGCAGGT
-GCTGCATTACAAATACCATTTGCTATGCAAATGGCTTATAGGTTTAATGGTATTGGAGTTACACAGAATGTTCTC
-TATGAGAACCAAAAATTGATTGCCAACCAATTTAATAGTGCTATTGGCAAAATTCAAGACTCACTTTCTTCCACA
-GCAAGTGCACTTGGAAAACTTCAAGATGTGGTCAACCAAAATGCACAAGCTTTAAACACGCTTGTTAAACAACTT
-AGCTCCAATTTTGGTGCAATTTCAAGTGTTTTAAATGATATCCTTTCACGTCTTGACAAAGTTGAGGCTGAAGTG
-CAAATTGATAGGTTGATCACAGGCAGACTTCAAAGTTTGCAGACATATGTGACTCAACAATTAATTAGAGCTGCA
-GAAATCAGAGCTTCTGCTAATCTTGCTGCTACTAAAATGTCAGAGTGTGTACTTGGACAATCAAAAAGAGTTGAT
-TTTTGTGGAAAGGGCTATCATCTTATGTCCTTCCCTCAGTCAGCACCTCATGGTGTAGTCTTCTTGCATGTGACT
-TATGTCCCTGCACAAGAAAAGAACTTCACAACTGCTCCTGCCATTTGTCATGATGGAAAAGCACACTTTCCTCGT
-GAAGGTGTCTTTGTTTCAAATGGCACACACTGGTTTGTAACACAAAGGAATTTTTATGAACCACAAATCATTACT
-ACAGACAACACATTTGTGTCTGGTAACTGTGATGTTGTAATAGGAATTGTCAACAACACAGTTTATGATCCTTTG
-CAACCTGAATTAGACTCATTCAAGGAGGAGTTAGATAAATATTTTAAGAATCATACATCACCAGATGTTGATTTA
-GGTGACATCTCTGGCATTAATGCTTCAGTTGTAAACATTCAAAAAGAAATTGACCGCCTCAATGAGGTTGCCAAG
-AATTTAAATGAATCTCTCATCGATCTCCAAGAACTTGGAAAGTATGAGCAGTATATAAAATGGCCATGGTACATT
-TGGCTAGGTTTTATAGCTGGCTTGATTGCCATAGTAATGGTGACAATTATGCTTTGCTGTATGACCAGTTGCTGT
-AGTTGTCTCAAGGGCTGTTGTTCTTGTGGATCCTGCTGCAAATTTGATGAAGACGACTCTGAGCCAGTGCTCAAA
-GGAGTCAAATTACATTACACATAA"""
+    if not rf:
+        print(
+            "Reference sequence file is not given."
+            " Considering sars-cov-2 spike protein sequence as reference"
+        )
+    elif not path.exists(rf) or not path.isfile(rf):
+        print(
+            f"Given reference file {rf} doesn't exist or path is not a file.")
 
-    with open(f"{tmp_fold}/ref.fasta", "w") as fout:
+        print("Considering sars-cov-2 spike protein sequence as reference")
+        rf = None
+
+    tmp_fold = "tmp"
+    # if access(tmp_fold, os.W_OK):
+    # tmp_fold = tmf.mkdtemp()
+    # else:
+    # print("/tmp is not writable. Trying current folder for temperory" " files")
+    # try:
+    # tmp_fold = tmf.mkdtemp(dir=".")
+    # except:
+    # exit("Current folder is not writable. Exiting . . . .")
+
+    # TODO: Replace with a folder in /tmp or in current
+    # makedirs(tmp_fold, exist_ok=True)
+
+    # if mf:
+    # pass
+
+    # ----------Housekeeping----------------
+    # Creating temporary  files and folders
+
+    ref_path = f"{tmp_fold}/ref.fasta"
+    makedirs(outd, exist_ok=True)
+    for folder in [
+        "assemblies",
+        "sanger_raw",
+        "sanger_converted_fasta",
+        "sanger_final_fasta",
+        "tmp",
+    ]:
+        makedirs(f"{tmp_fold}/{folder}", exist_ok=True)
+
+    # Copying ref fasta
+    with open(ref_path, "w") as fout:
         if not rf:
-            fout.write(f">ref\n{s_gene_seq}\n")
+            fout.write(f">ref\n{_s_gene_seq}\n")
         else:
-            if not path.exists(rf) or not path.isfile(rf):
-                exit(f"{rf} path or file doesn't exist. Exiting . . . ")
-            # TODO: Check if ref file exist
             seq_count = 0
             for rec in SeqIO.parse(rf, "fasta"):
                 seq_count += 1
@@ -789,122 +1032,163 @@ GGAGTCAAATTACATTACACATAA"""
                     f"{rf} contains 0 (zero) sequence. " "Expect only one." " Exiting."
                 )
 
-    sanger_outputs = files_and_groups(glob(f"{sa_ab1}/*"))
-
-    @transform(
-        sanger_outputs,
-        formatter(r".+/(?P<filebase>\w+).(?P<tame>\w+)"),
-        "%s/{filebase[0]}.fasta" % tmp_fold,
-        extras=[tmp_fold, gaps])
-    def ab1_2_fasta_r(inputfiles, outputfile):
-        """TODO: Converts ab1 to fasta.
-
-        :input: ab1 file
-        :outputfile: fasta file
-        :returns: None
-
-        """
-        ab2fasta(inputfiles, outputfile)
-
-    @merge(
-        ab1_2_fasta_r, f"{tmp_fold}/sanger.fasta", extras=[ss]
-    )  # Apply merge it. Ignore  if it fails to include
-    def sanger_seq_r(inputfiles, outputfile, extras):
-        # print(extras, "testing Anmol")
-        extras_file = open(extras, "w") if extras else None
-        with open(outputfile, "w") as fout:
-            for fl in inputfiles:
+    sanger_files = glob(f"{sa_ab1}/*")
+    if not sanger_files:
+        exit(f"No file found in {sa_ab1} folder. Exiting . . . .")
+    sanger_names = []
+    for fl in sanger_files:
+        if fl.endswith(".fasta"):
+            for rec in SeqIO.parse(fl, "fasta"):
+                if rec.id not in sanger_names:
+                    sanger_names.append(rec.id)
+        if fl.endswith(".ab1"):
+            flb = path.split(fl)[1].split(".")[0]
+            if flb not in sanger_names:
+                sanger_names.append(flb)
+    if ss:
+        for fl in glob(f"{sa_ab1}/*"):
+            if fl.endswith(".fasta"):
                 for rec in SeqIO.parse(fl, "fasta"):
-                    fout.write(f">{rec.description}\n{rec.seq}\n")
-                    if extras_file:
-                        coors = rec.description.split()[1:]
-                        coors = int(coors[0]), int(coors[1])
-                        extras_file.write(
-                            f">{rec.id}\n{rec.seq[coors[0]:coors[1]]}\n")
-        if extras_file:
-            extras_file.close()
-        # TODO: if mergeing is allow, generate a local copy
-        # TODO: Get input from extras
+                    with open(f"{tmp_fold}/tmp/{rec.id}.fasta", "w") as fout:
+                        fout.write(f">{rec.id}\n{rec.seq}\n")
 
-    @mkdir(outd)
-    @transform(
-        ab1_2_fasta_r,
-        formatter(r".+/(?P<filebase>\w+)"),
-        # TODO: Try to infer assemblies based on this
-        "%s/{filebase[0]}.fasta" % outd,
-    )
-    def alignments(sanger_file, outfile):
-        """Map sanger file to generated assemblies and insert sanger sequence."""
+                    l_r = orient(
+                        f"{tmp_fold}/tmp/{rec.id}.fasta",
+                        ref_path,
+                        f"{tmp_fold}/tmp",
+                    )
 
-        assembly = f"{tmp_fold}/asseblies/{path.split(sanger_file)[1]}"
-        sanger_seq = {}
-        sanger_seq_desc = {}
-        for rec in SeqIO.parse(sanger_file, "fasta"):
-            sanger_seq_desc[rec.id] = rec.description
-            sanger_seq[rec.id] = str(rec.seq)
+                    with open(
+                        f"{tmp_fold}/sanger_raw/{rec.id}.{l_r}.fasta", "w"
+                    ) as fout:
+                        fout.write(f">{rec.id}\n{rec.seq}\n")
+            if fl.endswith(".ab1"):
+                fl_e = path.split(fl)[1]
+                flb = fl_e.split(".")[0]
+                l_r = orient(fl, ref_path, f"{tmp_fold}/tmp")
+                copyfile(fl, f"{tmp_fold}/sanger_raw/{flb}.{l_r}.ab1")
 
-        org_seq = {}
-        for rec in SeqIO.parse(assembly, "fasta"):
-            org_seq[rec.id] = str(rec.seq)
+        sanger_outputs = files_and_groups(glob(f"{tmp_fold}/sanger_raw/*"))
+        for k in sanger_outputs:
+            ab2fasta(sanger_outputs, tmp_fold, gap, k)
 
-        flb = path.split(assembly)[1].split(".fasta")[0]
-        command = [
-            "blat",
-            "-noHead",
-            assembly,
-            sanger_file,
-            f"{tmp_fold}/{flb}.psl",
-        ]
-        cmd(command)
-        blat_df = pd.read_table(f"{tmp_fold}/{flb}.psl", header=None)
-        # return
-        blat_df = (
-            blat_df[blat_df[9] == blat_df[13]]
-            .sort_values(0, ascending=False)
-            .drop_duplicates(9)
+        with open(ss, "w") as fout:
+            for fl in glob(f"{tmp_fold}/sanger_converted_fasta/*"):
+                for rec in SeqIO.parse(fl, "fasta"):
+                    coors = rec.description.split()[1:]
+                    coors = int(coors[0]), int(coors[1])
+                    fout.write(f">{rec.id}\n{rec.seq[coors[0]:coors[1]]}\n")
+
+    assembly_files = glob(f"{asf}/*.fasta")
+    if not assembly_files:
+        exit(f"No file found in {asf} folder. Exiting . . . .")
+
+    assembly_names = []
+    for fl in assembly_files:
+        for rec in SeqIO.parse(fl, "fasta"):
+            assembly_names.append(rec.id)
+    # else:
+    # exit(f"No file is assembly folder {asf}. Exiting . . . .")
+    if not assembly_names:
+        exit("No assembly sequence found. Exiting . . . . .")
+
+    common_ids = set(assembly_names) & set(sanger_names)
+    if not common_ids:
+        exit(
+            "Genome assembly and sanger sequencing data doesn't have common"
+            " id(s). Exiting..."
         )
 
-        for _, row in blat_df.iterrows():
-            start, end = list(map(int, sanger_seq_desc[row[9]].split()[1:]))
-            if row[11] == 0:
-                org_seq[row[9]] = (
-                    org_seq[row[9]][: row[15] + start]
-                    + sanger_seq[row[9]][start: end + 1]
-                    + org_seq[row[9]][row[15] + end + 1:]
-                )
+    # Copying assembly to tmp folder
+    for fl in glob(f"{asf}/*.fasta"):
+        for rec in SeqIO.parse(fl, "fasta"):
+            if rec.id in common_ids:
+                with open(f"{tmp_fold}/assemblies/{rec.id}.fasta", "w") as fout:
+                    fout.write(f">{rec.id}\n{rec.seq}\n")
 
-            elif row[12] == row[10]:
-                org_seq[row[9]] = (
-                    org_seq[row[9]][: row[16] - (row[10] - start)]
-                    + sanger_seq[row[9]][start: end + 1]
-                    + org_seq[row[9]][row[16] - (row[10] - end - 1):]
-                )
-            else:
-                if start >= row[11]:
-                    org_seq[row[9]] = (
-                        org_seq[row[9]][: row[15] + start]
-                        + sanger_seq[row[9]][start: end + 1]
-                        + org_seq[row[9]][row[15] + end + 1:]
-                    )
-                elif end < row[10]:
-                    org_seq[row[9]] = (
-                        org_seq[row[9]][: row[16] - (row[10] - start)]
-                        + sanger_seq[row[9]][start: end + 1]
-                        + org_seq[row[9]][row[16] - (row[10] - end - 1):]
-                    )
-                else:
+    # Copying sanger files
+    if not ss:  # Else already done earlier
+        for fl in glob(f"{sa_ab1}/*"):
+            if fl.endswith(".fasta"):
+                for rec in SeqIO.parse(fl, "fasta"):
+                    if rec.id in common_ids:  # TODO: Do something smart
+                        with open(f"{tmp_fold}/tmp/{rec.id}.fasta", "w") as fout:
+                            fout.write(f">{rec.id}\n{rec.seq}\n")
 
-                    print("Please report at a bug at")
-                    print(
-                        "https://github.com/krisp-kwazulu-natal/"
-                        "sars-cov-2-sequencing-merge-sanger/issues"
-                    )
-        with open(outfile, "w") as fout:
-            for k in org_seq:
-                fout.write(f">{k}\n{org_seq[k]}\n")
+                        l_r = orient(
+                            f"{tmp_fold}/tmp/{rec.id}.fasta",
+                            ref_path,
+                            f"{tmp_fold}/tmp",
+                        )
 
-    pipeline_run(verbose=9, multithread=cpu)
-    # pipeline_printout_graph("flowchart.svg", "svg", no_key_legend=True)
+                        with open(
+                            f"{tmp_fold}/sanger_raw/{rec.id}.{l_r}.fasta", "w"
+                        ) as fout:
+                            fout.write(f">{rec.id}\n{rec.seq}\n")
+            if fl.endswith(".ab1"):
+                fl_e = path.split(fl)[1]
+                flb = fl_e.split(".")[0]
+                if flb in common_ids:
+
+                    l_r = orient(fl, ref_path, f"{tmp_fold}/tmp")
+                    copyfile(fl, f"{tmp_fold}/sanger_raw/{flb}.{l_r}.ab1")
+
+    seq_id_df = non_overlapping_ids(
+        f"{tmp_fold}/assemblies", f"{tmp_fold}/sanger_raw")
+
+    seq_id_df = seq_id_df[
+        ~(
+            (seq_id_df["assembly"] == "No Assembly")
+            | (
+                (seq_id_df["ab1_Forward"] == 0)
+                & (seq_id_df["ab1_Reverse"] == 0)
+                & (seq_id_df["fasta"] == 0)
+            )
+        )
+    ]
+
+    print(seq_id_df)
+
+    # Save as file or print
+    if tab:
+        seq_id_df.to_csv(tab, index=False)
+    else:
+        print(seq_id_df.to_csv(index=False))
+
+    seq_id_df = seq_id_df[
+        (
+            ((seq_id_df["ab1_Forward"] == 1) | (seq_id_df["ab1_Reverse"] == 1))
+            & (seq_id_df["fasta"] == 0)
+        )
+        | (
+            ((seq_id_df["ab1_Forward"] == 0) & (seq_id_df["ab1_Reverse"] == 0))
+            & (seq_id_df["fasta"] == 1)
+        )
+    ]
+    print("The patcher executed for ..")
+    print(",".join(seq_id_df["assembly"]))
+
+    assemblies = glob(f"{tmp_fold}/assemblies/*.fasta")
+
+    sanger_outputs = files_and_groups(glob(f"{tmp_fold}/sanger_raw/*"))
+    # for k in sanger_outputs:
+    # sanger_outputs[k] = check_orientation(sanger_outputs, ref_path, tmp_fold, k)
+    # pf = partial(check_orientation, sanger_outputs, ref_path, tmp_fold)
+    # sanger_outputs = pool.map(pf, sanger_outputs)
+    # sanger_outputs = [val for val in sanger_outputs if val]
+    # sanger_outputs = dict(ChainMap(*sanger_outputs))
+    # print(sanger_outputs, "test")
+    # exit(0)
+
+    # pf = partial(ab2fasta, sanger_outputs, tmp_fold, gap)
+    # sanger_fasta_path = pool.map(pf, sanger_outputs)
+    for k in sanger_outputs:
+        ab2fasta(sanger_outputs, tmp_fold, gap, k)
+
+    # exit(0)
+
+    for id_ in sanger_outputs:
+        integrate_in_assembly(outd, tmp_fold, id_)
 
 
 if __name__ == "__main__":
