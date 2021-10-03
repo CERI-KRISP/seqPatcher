@@ -377,7 +377,7 @@ def aln_clean(aln_df):
     """Clearning alihnment dataframe to remove unneccessary gaps and
     alignements."""
     one_side = ["1"]
-    print(aln_df)
+    # print(aln_df)
     if aln_df.shape[1] == 5:
         if "F_nuc" in aln_df:
             idx = aln_df[aln_df["F_nuc"] != "-"].index
@@ -463,7 +463,7 @@ def aln_clean(aln_df):
     return aln_df, u_range
 
 
-def fasta_map2ref(infile, gap, tmp_fold):
+def fasta_map2ref(infile, gap, tmp_fold, n3, idb):
     # TODO: Use some part for arranging the sequence
     """Integrates Sanger fasta to refgene
 
@@ -484,6 +484,7 @@ def fasta_map2ref(infile, gap, tmp_fold):
     flb = path.split(infile)[1].split(".")[0]
 
     aln_df = aln_df_with_ref(sequences, flb, tmp_fold)
+    # print(aln_df)
     mapped_index = aln_df[aln_df[flb] != "-"].index
     u_range = useful_range(mapped_index, gap)
     aln_df["concensus"] = "-"
@@ -493,49 +494,43 @@ def fasta_map2ref(infile, gap, tmp_fold):
     ]
     aln_df.loc[u_range[1]:, "concensus"] = aln_df.loc[u_range[1]:, "ref"]
 
-    ["del", "ins", "both"]
-    # TODO: Come back here
-    # TODO: trim ends
-    idb = None
-    n3 = True
     if idb in ["del", "both"]:
-        del_sites = aln_df[aln_df[flb] == "-"].index
-        del_ranges = ranges(del_sites)
-        del_ranges = [
-            rng for rng in del_ranges if (rng[0] > u_range[0] & rng[1] < u_range[1])
-        ]
-        # Del codon is accepted when codon deletion is allowed else deletions are filled with gaps
-        for rng in del_ranges:
-            if n3:
-                if (rng[1] - rng[0] + 1) % 3 != 0:
+        del_sites = aln_df[aln_df[flb] == "-"].index.values
+        if len(del_sites):
+            del_ranges = ranges(del_sites)
+            del_ranges = [
+                rng for rng in del_ranges if (rng[0] > u_range[0] & rng[1] < u_range[1])
+            ]
+            # Del codon is accepted when codon deletion is allowed else deletions are filled with gaps
+            for rng in del_ranges:
+                if n3:
+                    if (rng[1] - rng[0] + 1) % 3 != 0:
+                        aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
+                            rng[0]: rng[1], "ref"
+                        ]
+                else:
                     aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
                         rng[0]: rng[1], "ref"
                     ]
-            else:
-                aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
-                    rng[0]: rng[1], "ref"
-                ]
 
     if idb in ["ins", "both"]:
-        ins_sites = aln_df[aln_df["ref"] == "-"].index
-        ins_ranges = ranges(ins_sites)
-        ins_ranges = [
-            rng for rng in ins_ranges if (rng[0] > u_range[0] & rng[1] < u_range[1])
-        ]
-        for rng in ins_ranges:
-            if n3:
-                if (rng[1] - rng[0] + 1) % 3 != 0:
+        ins_sites = aln_df[aln_df["ref"] == "-"].index.values
+        if len(ins_sites):
+            ins_ranges = ranges(ins_sites)
+            ins_ranges = [
+                rng for rng in ins_ranges if (rng[0] > u_range[0] & rng[1] < u_range[1])
+            ]
+            for rng in ins_ranges:
+                if n3:
+                    if (rng[1] - rng[0] + 1) % 3 != 0:
+                        aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
+                            rng[0]: rng[1], "ref"
+                        ]
+                else:
                     aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
                         rng[0]: rng[1], "ref"
                     ]
-            else:
-                aln_df.loc[rng[0]: rng[1], "concensus"] = aln_df.loc[
-                    rng[0]: rng[1], "ref"
-                ]
 
-    # ref = "".join(aln_df["ref"])
-    # seq = "".join(aln_df[flb])
-    # seq = ref[: u_range[0]] + seq[u_range[0]: u_range[1]] + ref[u_range[1]:]
     seq = "".join(aln_df["concensus"])
     outfile = f"{tmp_fold}/sanger_converted_fasta/{flb}.fasta"
 
@@ -622,15 +617,15 @@ def ab1_2seq_map2ref(infiles, gap, tmp_fold):
 
 
 def ab2fasta(
-    sang_dict, tmp_fold, gap, key  # , bc="neigh"
+    sang_dict, tmp_fold, gap, key, n3, idb  # , bc="neigh"
 ):  # Base criteria, max, neighbors, mixed # Inputfiles paired and none paired
     # sanger_outputs, tmp_fold, gap
     """Retains fasta and converts ab1 to fasta"""
-    print(key, sang_dict)
+    # print(key, sang_dict)
     infiles = sang_dict[key]
 
     if len(infiles) == 1 and infiles[0].endswith(".fasta"):
-        fasta_map2ref(infiles[0], gap, tmp_fold)
+        fasta_map2ref(infiles[0], gap, tmp_fold, n3, idb)
 
     else:
         ab1_2seq_map2ref(infiles, gap, tmp_fold)
@@ -929,18 +924,11 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
 # TODO: Implement version option
 def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bscpu,
     # print(sa_ab1, asf, outd, tab, ss, rf, cpu, ci, gap, n3, idb)
-    # TODO: Allowing insertion details only
     """
-    Convert ab1 to Fasta based given parameters. must contain original
-    sequence name., Must me N trimmed at the end
-    work when either ab1 or sa parameter given. Must have ab1 files with ab1
-    suffix with sequence name as prefix\n
-    Will generate `merged_output.fasta` in current folder.
-
-    max: max peak
-    neigh: earlier peak if ambiguous nucleotide contain earlier base
-    ref: Use reference base in case of ambiguity
-    """
+    Reports nucleotide sequence from Sanger chromatogram data based on user
+    provided parameters and integrate that in assembly generated using NGS
+    data"""
+    # TODO: Integrate multi core system
     # if cpu < 1:
     # print("Number of CPU use given is < 1.")
     # print("Using default CPU value of 1")
@@ -982,21 +970,8 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
         print("Considering sars-cov-2 spike protein sequence as reference")
         rf = None
 
-    tmp_fold = "tmp"
-    # if access(tmp_fold, os.W_OK):
-    # tmp_fold = tmf.mkdtemp()
-    # else:
-    # print("/tmp is not writable. Trying current folder for temperory" " files")
-    # try:
-    # tmp_fold = tmf.mkdtemp(dir=".")
-    # except:
-    # exit("Current folder is not writable. Exiting . . . .")
-
-    # TODO: Replace with a folder in /tmp or in current
-    # makedirs(tmp_fold, exist_ok=True)
-
-    # if mf:
-    # pass
+    # tmp_fold = "tmp"
+    tmp_fold = tmf.mkdtemp()
 
     # ----------Housekeeping----------------
     # Creating temporary  files and folders
@@ -1070,7 +1045,7 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
 
         sanger_outputs = files_and_groups(glob(f"{tmp_fold}/sanger_raw/*"))
         for k in sanger_outputs:
-            ab2fasta(sanger_outputs, tmp_fold, gap, k)
+            ab2fasta(sanger_outputs, tmp_fold, gap, k, n3, idb)
 
         with open(ss, "w") as fout:
             for fl in glob(f"{tmp_fold}/sanger_converted_fasta/*"):
@@ -1147,7 +1122,7 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
         )
     ]
 
-    print(seq_id_df)
+    # print(seq_id_df)
 
     # Save as file or print
     if tab:
@@ -1183,12 +1158,16 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
     # pf = partial(ab2fasta, sanger_outputs, tmp_fold, gap)
     # sanger_fasta_path = pool.map(pf, sanger_outputs)
     for k in sanger_outputs:
-        ab2fasta(sanger_outputs, tmp_fold, gap, k)
+        ab2fasta(sanger_outputs, tmp_fold, gap, k, n3, idb)
 
     # exit(0)
 
     for id_ in sanger_outputs:
         integrate_in_assembly(outd, tmp_fold, id_)
+
+    if ci:
+        command = ["rm", "-rf", tmp_fold]
+        cmd(command)
 
 
 if __name__ == "__main__":
