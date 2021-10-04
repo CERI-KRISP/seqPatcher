@@ -9,7 +9,7 @@ The script seqpatcher.py integrates the sanger sequenced SARS-CoV-2 S-gene segme
 - [MUSCLE](https://www.drive5.com/muscle/downloads.htm)
 - [BLAT](https://hgdownload.soe.ucsc.edu/admin/exe/)
 
-Both the tools can be either be downloaded from provided links or installed using bioconda or ubuntu repositories. Tools must be in system path, accessible via terminal.
+Both the tools can be either be downloaded from provided links or installed using bioconda or ubuntu repositories. Tools must be in system the path, accessible via terminal.
 
 ## Python modules
 
@@ -26,23 +26,65 @@ Both the tools can be either be downloaded from provided links or installed usin
 
 1. File name or sample name must not have special characters.
 2. Assembly files should be written as <sample_name>.fasta. Sequence's name should be the same as <sample_name>.
-3. If assembly files contain multiple sequences, assembly file will be generated for each sample ID as explained in point 1.
+3. If assembly files contain multiple sequences, assembly file will be generated for each sample ID as explained in point 2.
 4. If all the assemblies are in one file, name can be anything with fasta extension. However, the sequences' names be same as <sample_name>.
-5. ab1 file should be named as <sample_name>.<xyz>.ab1. Where xyz can be any string.
-6. If user already has as sanger fasta it should be named as <sample_name>.<xyz>.fasta. Where xyz can be any string.
+5. ab1 file should be named as <sample_name>.\<xyz>.ab1. Where xyz can be any string.
+6. If user already has as sanger fasta it should be named as <sample_name>.\<xyz>.fasta. Where xyz can be any string.
+
+<a name='cmdoptions'>
+
+# Commandline options
+
+```
+Usage: seqpatcher3.py [OPTIONS]
+
+  Reports nucleotide sequence from Sanger chromatogram data based on user
+  provided parameters and integrate that in assembly generated using NGS
+  data
+
+Options:
+  -s, --sanger-ab1 TEXT           ab1 folder or sanger sequence file
+                                  [default: sanger_ab1]
+
+  -a, -assemblies-foder TEXT      Assemblies folder containing fasta files
+                                  [default: unitest/assemblies]
+
+  -o, --out-dir TEXT              Output Folder  [default: Results]
+  -t, --tab TEXT                  CSV file for overlapping assemblies and
+                                  sanger ids. If not given, stdout.
+
+  -O, --output-fasta TEXT         Sanger output fasta from ab1
+  -R, --ref-gene-fasta-file TEXT  Refence gene file in fasta format
+  -c, --clean-intermediate BOOLEAN
+                                  Remove intermediate file  [default: True]
+  -g, --gap-allowed INTEGER       Gap Allowed between aligned fragment to
+                                  consider the region continuous  [default:
+                                  10]
+
+  -3, --only-3-nuc BOOLEAN        Allow  3 nucleotide InDels else replace with
+                                  reference nucleotides  [default: True]
+
+  -x, --indel-selction [del|ins|both]
+                                  Replace Insertion, Deletion or Both
+                                  [default: del]
+
+  --version                       Show the version and exit.
+  --help                          Show this message and exit.
+```
 
 <a name="execution" />
+
 # Execution
 
 - Execute `python seqpatcher.py --help` for help
 - Execute `seqpatcher.py --help` for help, if installed in system path.
 - To execute in current folder you must have the following folders
   - ab1: Containing ab1 files single/paired or pre-compiled fasta.
-  - assemblies: Assembly files generated using HTS data. These can be merged in one file.
+  - assemblies: The folder contains assembly files generated using HTS data. These can be merged in one file.
   - Sanger sequences merged fasta will be saved in `Result` Folder.
-  - Some files will be generated user provided path.
+  - Some files will be generated to user provided path.
     - Merged assemblies on one file.
-    - Merge ab1 to fasta converted samples.
+    - Merged ab1 to fasta converted files.
 
 # Base selection
 
