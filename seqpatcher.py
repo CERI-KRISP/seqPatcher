@@ -5,24 +5,30 @@
 # and Malawi-Liverpool-Wellcome Trust, Malawi
 # V0.0.1: 20/04/2021
 
-
-import os
-import subprocess as sb
-import sys
-from collections import defaultdict
-from multiprocessing import cpu_count, Pool
-from glob import glob
-from os import makedirs, path, access
-import tempfile as tmf
-from functools import partial
-from shutil import copyfile
-from collections import ChainMap
-
-
-import click
-import numpy as np
-import pandas as pd
 from Bio import Seq, SeqIO
+import pandas as pd
+import numpy as np
+import click
+
+# from collections import ChainMap
+from shutil import copyfile
+
+# from functools import partial
+import tempfile as tmf
+from os import makedirs, path  # , access
+from glob import glob
+
+# from multiprocessing import cpu_count, Pool
+from collections import defaultdict
+
+# import sys
+import subprocess as sb
+
+# import os
+import warnings
+
+warnings.filterwarnings("ignore")
+# warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 __version__ = "0.0.1"
@@ -79,11 +85,6 @@ AATTTAAATGAATCTCTCATCGATCTCCAAGAACTTGGAAAGTATGAGCAGTATATAAAATGGCCATGGTACATT
 TGGCTAGGTTTTATAGCTGGCTTGATTGCCATAGTAATGGTGACAATTATGCTTTGCTGTATGACCAGTTGCTGT
 AGTTGTCTCAAGGGCTGTTGTTCTTGTGGATCCTGCTGCAAATTTGATGAAGACGACTCTGAGCCAGTGCTCAAA
 GGAGTCAAATTACATTACACATAA"""
-
-
-def version():
-    """Prints software version."""
-    print(__version__)
 
 
 def cmd(command):
@@ -302,25 +303,26 @@ def ab1seq(infile, tmp_fold, peak_selection=None):
     ):
         ambi_base = chr(channel[0])
         if ambi_base in amb_bases:
-            if not peak_selection:
-                nuc_df["nuc"].append(ambi_base)
-                td = {}  # TODO: Please check what does td reprensts
-                for base in amb_bases[ambi_base]:
-                    td[base] = trace[base][channel[1]]
-                nuc_df["peak"].append(td)
-            elif peak_selection == "max":
-                tb = ""
-                td = 0
-                for base in amb_bases[ambi_base]:
-                    if td < trace[base][channel[1]]:
-                        td = trace[base][channel[1]]
-                        tb = base
-                nuc_df["nuc"].append(tb)
-                nuc_df["peak"].append({tb: td})
+            # if not peak_selection:
+            nuc_df["nuc"].append(ambi_base)
+            td = {}  # TODO: Please check what does td reprensts
+            for base in amb_bases[ambi_base]:
+                td[base] = trace[base][channel[1]]
+            nuc_df["peak"].append(td)
+            # elif peak_selection == "max":
+            # tb = ""
+            # td = 0
+            # for base in amb_bases[ambi_base]:
+            # if td < trace[base][channel[1]]:
+            # td = trace[base][channel[1]]
+            # tb = base
+            # nuc_df["nuc"].append(tb)
+            # nuc_df["peak"].append({tb: td})
         else:
             nuc_df["nuc"].append(ambi_base)
             nuc_df["peak"].append({ambi_base: trace[ambi_base][channel[1]]})
     nuc_df = pd.DataFrame(nuc_df)
+    # In case of ambigious nucleotides
     peak = nuc_df["peak"].apply(lambda x: np.mean(list(x.values()))).values
 
     correct_peak_pos = np.where(peak > 100)[0]
@@ -350,10 +352,6 @@ def aln_df_with_ref(seq_dict, flb, tmp_fold):
     return pd.DataFrame(sequences)
 
 
-# TODO: Give pririty of forwarwd for for the begining and reverse for the end side
-# TODO: Trimming of paired depends on overhangn and given deletetion length
-
-
 def merge_base_peak(nuc_df, peak_dict):
     """Merge the peak related information in nucleotide dataframe."""
     # NOTE: Useful only when there is ambigiuity in the base call, rest remove to save memory
@@ -362,104 +360,159 @@ def merge_base_peak(nuc_df, peak_dict):
 
     # df = enumerate_columns(df)
     # print(df)
+    to_drop = ["idx"]
     for nuc in peak_dict:
+        # Expecting sequence will not change while aligning, except insertion of gaps
         peak_dict[nuc][f"{nuc}_idx"] = list(
             nuc_df[nuc_df[f"{nuc}"] != "-"].index
         )  # list(range(len(peak_dict[k]))
         nuc_df = nuc_df.merge(
             peak_dict[nuc], left_on="idx", right_on=f"{nuc}_idx", how="outer"
         )
-        del nuc_df[str(nuc)]
+        to_drop += [f"{nuc}_idx", f"{nuc}_nuc"]
+
+    nuc_df = nuc_df.drop(to_drop, axis=1)
     return nuc_df
 
 
-def aln_clean(aln_df):
+def rep_paired_base(lst):
+    """Selecting representative base in presence of forward and
+    reverse sanger sequencing data."""
+    if lst["F"] == "-":
+        if lst["R"] == "-":
+            return "-"
+        else:
+            bmax = 0
+            base = "A"
+            peaks = lst["R_peak"]
+            for bs in peaks:
+                if peaks[bs] > bmax:
+                    bmax = peaks[bs]
+                    base = bs
+            return base
+    else:
+        if lst["R"] == "-":
+            bmax = 0
+            base = "A"
+            peaks = lst["F_peak"]
+            for bs in peaks:
+                if peaks[bs] > bmax:
+                    bmax = peaks[bs]
+                    base = bs
+            return base
+        else:
+            common = list(set(lst["R_peak"]) & set(lst["F_peak"]))
+            if len(common) == 1:
+                return common[0]
+            else:
+                return lst["ref"]
+
+
+def aln_clean(aln_df, gap=10):
     """Clearning alihnment dataframe to remove unneccessary gaps and
     alignements."""
-    one_side = ["1"]
-    # print(aln_df)
-    if aln_df.shape[1] == 5:
-        if "F_nuc" in aln_df:
-            idx = aln_df[aln_df["F_nuc"] != "-"].index
-        else:
-            idx = aln_df[aln_df["R_nuc"] != "-"].index
+    sang_type = None
+    if "F" in aln_df and "R" in aln_df:
+        idx = aln_df[~((aln_df["F"] == "-") & (aln_df["R"] == "-"))].index
+        sang_type = "P"  # Fore paired
     else:
-        one_side.append("2")
-        # NOTE: Considering both sequences should overlap
-        # idx = aln_df[~((aln_df["F_nuc"] == "-") | (aln_df["2_nuc"] == "-"))].index
-        # NOTE: Considering either sequence overlapping regions
-        idx = aln_df[~((aln_df["F_nuc"] == "-") &
-                       (aln_df["R_nuc"] == "-"))].index
-        # TODO: Use below code if other team members allow
-        # Checking with gap with common 3 nuc length gaps
-        idx3 = aln_df[(aln_df["F_nuc"] == "-") &
-                      (aln_df["R_nuc"] == "-")].index
-        u3_range = list(useful_range(list(idx3), 1))
-        # TODO: Select ranges with length of 3 and push them in the sequences
+        if "F" in aln_df:
+            idx = aln_df[aln_df["F"] != "-"].index
+            sang_type = "F"
+        else:
+            idx = aln_df[aln_df["R"] != "-"].index
+            sang_type = "R"
 
-    u_range = list(useful_range(list(idx), 10))
-    # Add the importnat gap. Default: 10
-    if len(one_side) == 1:
-        # Avoid erroneous alignments at the end
-        col_present = "F_nuc" if "F_nuc" in aln_df else "R_nuc"
-        temp_aln_df = aln_df.loc[u_range[0]: u_range[0] + 8]
-        if list(temp_aln_df[col_present].values) != list(temp_aln_df["ref"].values):
-            aln_df.loc[u_range[0]: u_range[0] + 8, col_present] = "-"
-            u_range[0] += 9
-        temp_aln_df = aln_df.loc[u_range[1] - 8: u_range[1]]
-        if list(temp_aln_df[col_present].values) != list(temp_aln_df["ref"].values):
-            aln_df.loc[u_range[1] - 8: u_range[1], col_present] = "-"
-            u_range[1] -= 9
-
+    u_range = list(useful_range(list(idx), gap))
     for col in aln_df.columns:
+
         if col == "ref":
             continue
-        aln_df.loc[
-            ~aln_df.index.isin(list(range(u_range[0], u_range[1] + 1))), col
-        ] = "-"
+        aln_df.loc[: u_range[0] - 1, col] = "-"
+        aln_df.loc[u_range[1] + 1:, col] = "-"
 
-    def rep_paired_base(lst):
-        """Selecting representative base in presence of forward and
-        reverse sanger sequencing data."""
-        # TODO: Can be improved later selective query here
-        if lst["ref"] == "-":
-            return "-"
-        if (
-            (lst["F_nuc"] == lst["R_nuc"] == "-")
-            or (lst["F_nuc"] != lst["R_nuc"] == lst["ref"])
-            or (lst["R_nuc"] != lst["F_nuc"] == lst["ref"])
-            or (lst["R_nuc"] == lst["F_nuc"] == lst["ref"])
-            or (lst["R_nuc"] != lst["F_nuc"] != lst["ref"])
-            or ((lst["R_nuc"] not in "ACGT-") and (lst["F_nuc"] not in "ACGT-"))
-        ):
-            return lst["ref"]
-        if lst["F_nuc"] == lst["R_nuc"] != lst["ref"]:
-            return lst["F_nuc"]
-        # if (lst["R_nuc"] not in "ACGT-") and (lst["F_nuc"] in "ACGT"):
-        if (lst["R_nuc"] not in "ACGT") and (lst["F_nuc"] in "ACGT"):
-            # NOTE: alowing gap in one base
-            return lst["F_nuc"]
-        # if (lst["F_nuc"] not in "ACGT-") and (lst["R_nuc"] in "ACGT"):
-        if (lst["F_nuc"] not in "ACGT") and (lst["R_nuc"] in "ACGT"):
-            # NOTE: alowing gap in one base
-            return lst["R_nuc"]
-        # TODO: What should be returned when nothing works??
+    if sang_type in "FR":
+        aln_df["consensus"] = aln_df[sang_type].values
+        ambi_indexes = (aln_df[sang_type].isin("NRYKMSWBDHV")).index
+        for ambi_index in ambi_indexes:
+            bmax = 0
+            base = "A"
+            peaks = aln_df.loc[ambi_index, f"{sang_type}_peak"]
+            for bs in peaks:
+                if peaks[bs] > bmax:
+                    bmax = peaks[bs]
+                    base = bs
+            aln_df.loc[ambi_index, "consensus"] = base
 
-    def rep_single_base(lst):
-        if lst["ref"] == "-":
-            return "-"
-        col_present = "F_nuc" if "F_nuc" in lst else "R_nuc"
-        if (lst[col_present] == "-") or (lst[col_present] == lst["ref"]):
-            return lst["ref"]
-        if lst[col_present] not in "ACGT-":
-            return lst["ref"]
-        return lst[col_present]
+        insert_ranges - \
+            (aln_df.loc[u_range[0]: u_range[1]]["ref"] == "-").index
+        if insert_ranges.any():
+            insert_ranges = ranges(insert_ranges)
+            for insert_range in insert_ranges:
+                if (insert_range[1] - insert_range[0] + 1) % 3 == 0:
+                    continue
+                else:
+                    if (insert_range[1] - insert_range[0] + 1) < 3:
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "-"
+                    else:
+                        # TODO: Talk to san one more time
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "N"
+        del_ranges = (aln_df.loc[u_range[0]: u_range[1]]
+                      [sang_type] == "-").index
+        if del_ranges.any():
+            del_ranges = ranges(del_ranges)
+            for del_range in del_ranges:
+                if (del_range[1] - del_range[0] + 1) % 3 == 0:
+                    continue
+                else:
+                    if (del_range[1] - del_range[0] + 1) < 3:
+                        aln_df.loc[
+                            del_range[0]: del_range[1], "consensus"
+                        ] = aln_df.loc[del_range[0]: del_range[1], "ref"].values
+                    else:
+                        aln_df.loc[del_range[0]
+                            : del_range[1], "consensus"] = "N"
 
-    if len(one_side) > 1:
-        aln_df["rep"] = aln_df.apply(rep_paired_base, axis=1)
     else:
-        aln_df["rep"] = aln_df.apply(rep_single_base, axis=1)
-    # print("".join(aln_df["rep"].values))
+        aln_df["consensus"] = aln_df.apply(rep_paired_base, axis=1)
+        insert_ranges = aln_df.loc[u_range[0]: u_range[1]][
+            (aln_df["ref"] == "-") & ((aln_df["F"] != "-")
+                                      & (aln_df["R"] != "-"))
+        ].index
+        if insert_ranges.any():
+            insert_ranges = ranges(insert_ranges)
+            for insert_range in insert_ranges:
+                if (insert_range[1] - insert_range[0] + 1) % 3 == 0:
+                    continue
+                else:
+                    if (insert_range[1] - insert_range[0] + 1) < 3:
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "-"
+                    else:
+                        # TODO: Talk to san one more time
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "N"
+
+        del_ranges = aln_df.loc[u_range[0]: u_range[1]][
+            (aln_df["ref"] != "-") & ((aln_df["F"] == "-")
+                                      & (aln_df["R"] == "-"))
+        ].index
+        if del_ranges.any():
+            del_ranges = ranges(del_ranges)
+            for del_range in del_ranges:
+                if (del_range[1] - del_range[0] + 1) % 3 == 0:
+                    continue
+                else:
+                    if (del_range[1] - del_range[0] + 1) < 3:
+                        aln_df.loc[
+                            del_range[0]: del_range[1], "consensus"
+                        ] = aln_df.loc[del_range[0]: del_range[1], "ref"].values
+                    else:
+                        aln_df.loc[del_range[0]
+                            : del_range[1], "consensus"] = "N"
+
     return aln_df, u_range
 
 
@@ -531,7 +584,7 @@ def fasta_map2ref(infile, gap, tmp_fold, n3, idb):
                         rng[0]: rng[1], "ref"
                     ]
 
-    seq = "".join(aln_df["concensus"])
+    seq = "".join(aln_df["concensus"]).replace("-", "N")
     outfile = f"{tmp_fold}/sanger_converted_fasta/{flb}.fasta"
 
     with open(outfile, "w") as fout:
@@ -565,48 +618,16 @@ def ab1_2seq_map2ref(infiles, gap, tmp_fold):
     aln_with_peak = merge_base_peak(
         aln_df_with_ref(tsequences, flb, tmp_fold), ab1seq_dfs
     )
-    for n in ["F", "R"]:
-        cl = f"{n}_nuc"
-        if cl in aln_with_peak:
-            aln_with_peak.loc[pd.isnull(aln_with_peak[cl]), cl] = "-"
+    # for n in ["F", "R"]:
+    # cl = f"{n}_nuc"
+    # if cl in aln_with_peak:
+    # aln_with_peak.loc[pd.isnull(aln_with_peak[cl]), cl] = "-"
+    # print(aln_with_peak)
+    # exit(0)
     aln_with_peak, u_range = aln_clean(aln_with_peak)
-    if "R_nuc" in aln_with_peak and "F_nuc" in aln_with_peak:
-        usr = ranges(
-            aln_with_peak[
-                aln_with_peak[["ref", "F_nuc", "R_nuc"]].apply(
-                    lambda row: True if "-" in list(row.values) else False,
-                    axis=1,
-                )
-            ].index,
-            10,
-        )  # TODO Idiot fix it
-    else:
-        col_present = "F_nuc" if "F_nuc" in aln_with_peak else "R_nuc"
-        usr = ranges(
-            aln_with_peak[
-                aln_with_peak[["ref", col_present]].apply(
-                    lambda row: True if "-" in list(row.values) else False,
-                    axis=1,
-                )
-            ].index,
-            10,
-        )  # TODO: Idiot fix it
-
-    if usr:
-        for us in usr:
-            if "R_nuc" in aln_with_peak and "F_nuc" in aln_with_peak:
-                if "".join(aln_with_peak.loc[us[0]: us[1], "F_nuc"].values) == "".join(
-                    aln_with_peak.loc[us[0]: us[1], "R_nuc"].values
-                ):
-                    aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
-                        us[0]: us[1], "F_nuc"
-                    ].values
-            else:
-                # NOTE: Something is wrong here
-                aln_with_peak.loc[us[0]: us[1], "rep"] = aln_with_peak.loc[
-                    us[0]: us[1], "ref"
-                ].values
-    seq = "".join(list(aln_with_peak["rep"].values))
+    # aln_with_peak.to_csv("testxx.csv")
+    # exit(0)
+    seq = "".join(list(aln_with_peak["consensus"].values))
     # TODO: Generate sequence and exit
     outfile = path.split(infiles[0])[1].split(".")[0]
     outfile = f"{tmp_fold}/sanger_converted_fasta/{outfile}.fasta"
@@ -824,12 +845,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     type=str,
     default="unitest/assemblies",
     show_default=True,
-)  # /home/devil/Documents/San/Corona/Merging/Sanger/
-# @click.option("-rf", help="Reference fasta",
-#               type=bool, default=False, show_default=True)
-# @click.option("-bs", help="Base replacement methos",
-#               type=click.Choice([None, "max", "neigh", "ref"]),
-# default=None, show_default=True)
+)
 @click.option(
     "-o",
     "--out-dir",
@@ -839,15 +855,6 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     default="Results",
     show_default=True,
 )
-# @click.option(
-# "-r",
-# "--unpaired-ids",
-# "mf",
-# help="Report (none)-ovelapping IDs missing sanger seq as table",
-# type=bool,
-# default=True,
-# show_default=True,
-# )
 @click.option(
     "-t",
     "--tab",
@@ -906,14 +913,14 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-3",
     "--only-3-nuc",
     "n3",
-    help="Allow gap of 3 nucleotide (only if supported by both forward and reverse in paired data)",
+    help="Allow  3 nucleotide InDels else replace with reference nucleotides",
     type=bool,
     default=True,
     show_default=True,
 )
 @click.option(
     "-x",
-    "--indel-selction",
+    "--indel-selection",
     "idb",
     help="Replace Insertion, Deletion or Both",
     type=click.Choice(["del", "ins", "both"]),
@@ -921,7 +928,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     show_default=True,
     multiple=False,
 )
-# TODO: Implement version option
+@click.version_option(__version__)
 def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bscpu,
     # print(sa_ab1, asf, outd, tab, ss, rf, cpu, ci, gap, n3, idb)
     """
@@ -1122,9 +1129,6 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
         )
     ]
 
-    # print(seq_id_df)
-
-    # Save as file or print
     if tab:
         seq_id_df.to_csv(tab, index=False)
     else:
@@ -1146,21 +1150,8 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
     assemblies = glob(f"{tmp_fold}/assemblies/*.fasta")
 
     sanger_outputs = files_and_groups(glob(f"{tmp_fold}/sanger_raw/*"))
-    # for k in sanger_outputs:
-    # sanger_outputs[k] = check_orientation(sanger_outputs, ref_path, tmp_fold, k)
-    # pf = partial(check_orientation, sanger_outputs, ref_path, tmp_fold)
-    # sanger_outputs = pool.map(pf, sanger_outputs)
-    # sanger_outputs = [val for val in sanger_outputs if val]
-    # sanger_outputs = dict(ChainMap(*sanger_outputs))
-    # print(sanger_outputs, "test")
-    # exit(0)
-
-    # pf = partial(ab2fasta, sanger_outputs, tmp_fold, gap)
-    # sanger_fasta_path = pool.map(pf, sanger_outputs)
     for k in sanger_outputs:
         ab2fasta(sanger_outputs, tmp_fold, gap, k, n3, idb)
-
-    # exit(0)
 
     for id_ in sanger_outputs:
         integrate_in_assembly(outd, tmp_fold, id_)

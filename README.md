@@ -94,23 +94,24 @@ Options:
 
 InDels muliple of 3 nucleotides can be permitted else below rule will be applied.
 
-| Ref    | Forward    | Reverse    | Final Outcome |
-| ------ | ---------- | ---------- | ------------- |
-| -      | Any base/- | Any base/- | -             |
-| Base A | Base B     | Base B     | Base B        |
-| Base A | Base A     | Base B     | Base A        |
-| Base A | Base B     | Base A     | Base A        |
-| Base A | Base B     | -          | Base A        |
-| Base A | Base A     | -          | Base A        |
-| Base A | -          | -          | Base A        |
-| Base A | Base B     | Base Ambi  | Base B        |
-| Base A | Base B     | Base C     | Base A        |
+| Ref    | Forward    | Reverse    | Final Outcome                                                   |
+| ------ | ---------- | ---------- | --------------------------------------------------------------- |
+| -      | Any base/- | Any base/- | -                                                               |
+| Base A | Base B     | Base B     | Base B                                                          |
+| Base A | Base A     | Base B     | Base A                                                          |
+| Base A | Base B     | Base A     | Base A                                                          |
+| Base A | Base B     | -          | Base A                                                          |
+| Base A | Base A     | -          | Base A                                                          |
+| Base A | -          | -          | Base A                                                          |
+| Base A | Base B     | Base Ambi  | Base B if (Base B is in Base Ambi) else Base A                  |
+| Base A | Base Ambi  | Base Ambi  | Single common base in Ambi bases (excluding Base A) else Base A |
+| Base A | Base B     | Base C     | Base A                                                          |
 
 ## Single ab1
 
 | Reference | Forward/Reverse | Selected     |
 | --------- | --------------- | ------------ |
-| -         | Any base/-      | -            |
+| -         | Base A          | Base A       |
 | Base A    | -               | Base A       |
 | Base A    | Base B          | Base B       |
 | Base A    | Ambi            | highest peak |
@@ -119,7 +120,7 @@ InDels muliple of 3 nucleotides can be permitted else below rule will be applied
 
 | Reference | FastaNucleotides | Selected |
 | --------- | ---------------- | -------- |
-| -         | Any base         | -        |
+| -         | Base A           | Base A   |
 | Base A    | -                | Base A   |
 | Base A    | Base B           | Base B   |
 | Base A    | Ambi             | Base A   |
