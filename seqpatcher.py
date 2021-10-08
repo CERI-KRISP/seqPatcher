@@ -403,7 +403,7 @@ def rep_paired_base(lst):
         else:
             # remove lst['ref'], in case that is present
             common = list((set(lst["R_peak"]) & set(
-                lst["F_peak"]))-set([lst['ref']]))
+                lst["F_peak"])) - set([lst["ref"]]))
             if len(common) == 1:
                 return common[0]
             else:
@@ -435,7 +435,7 @@ def aln_clean(aln_df, gap=10):
 
     if sang_type in "FR":
         aln_df["consensus"] = aln_df[sang_type].values
-        ambi_indexes = (aln_df[sang_type].isin("NRYKMSWBDHV")).index
+        ambi_indexes = aln_df[aln_df[sang_type].isin("NRYKMSWBDHV")].index
         for ambi_index in ambi_indexes:
             bmax = 0
             base = "A"
@@ -446,8 +446,8 @@ def aln_clean(aln_df, gap=10):
                     base = bs
             aln_df.loc[ambi_index, "consensus"] = base
 
-        insert_ranges - \
-            (aln_df.loc[u_range[0]: u_range[1]]["ref"] == "-").index
+        insert_ranges = aln_df.loc[u_range[0]: u_range[1]]
+        insert_ranges = insert_ranges[insert_ranges["ref"] == "-"].index
         if insert_ranges.any():
             insert_ranges = ranges(insert_ranges)
             for insert_range in insert_ranges:
@@ -455,12 +455,14 @@ def aln_clean(aln_df, gap=10):
                     continue
                 else:
                     if (insert_range[1] - insert_range[0] + 1) < 3:
-                        aln_df.loc[insert_range[0]                                   : insert_range[1], "consensus"] = "-"
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "-"
                     else:
                         # TODO: Talk to san one more time
-                        aln_df.loc[insert_range[0]                                   : insert_range[1], "consensus"] = "N"
-        del_ranges = (aln_df.loc[u_range[0]: u_range[1]]
-                      [sang_type] == "-").index
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "N"
+        del_ranges = aln_df.loc[u_range[0]: u_range[1]]
+        del_ranges = del_ranges[del_ranges[sang_type] == "-"].index
         if del_ranges.any():
             del_ranges = ranges(del_ranges)
             for del_range in del_ranges:
@@ -472,13 +474,15 @@ def aln_clean(aln_df, gap=10):
                             del_range[0]: del_range[1], "consensus"
                         ] = aln_df.loc[del_range[0]: del_range[1], "ref"].values
                     else:
-                        aln_df.loc[del_range[0]                                   : del_range[1], "consensus"] = "N"
+                        aln_df.loc[del_range[0]
+                            : del_range[1], "consensus"] = "N"
 
     else:
         aln_df["consensus"] = aln_df.apply(rep_paired_base, axis=1)
-        insert_ranges = aln_df.loc[u_range[0]: u_range[1]][
-            (aln_df["ref"] == "-") & ((aln_df["F"] != "-")
-                                      & (aln_df["R"] != "-"))
+        insert_ranges = aln_df.loc[u_range[0]: u_range[1]]
+        insert_ranges = insert_ranges[
+            (insert_ranges["ref"] == "-")
+            & ((insert_ranges["F"] != "-") & (insert_ranges["R"] != "-"))
         ].index
         if insert_ranges.any():
             insert_ranges = ranges(insert_ranges)
@@ -487,14 +491,17 @@ def aln_clean(aln_df, gap=10):
                     continue
                 else:
                     if (insert_range[1] - insert_range[0] + 1) < 3:
-                        aln_df.loc[insert_range[0]                                   : insert_range[1], "consensus"] = "-"
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "-"
                     else:
                         # TODO: Talk to san one more time
-                        aln_df.loc[insert_range[0]                                   : insert_range[1], "consensus"] = "N"
+                        aln_df.loc[insert_range[0]
+                            : insert_range[1], "consensus"] = "N"
 
-        del_ranges = aln_df.loc[u_range[0]: u_range[1]][
-            (aln_df["ref"] != "-") & ((aln_df["F"] == "-")
-                                      & (aln_df["R"] == "-"))
+        del_ranges = aln_df.loc[u_range[0]: u_range[1]]
+        del_ranges = del_ranges[
+            (del_ranges["ref"] != "-")
+            & ((del_ranges["F"] == "-") & (del_ranges["R"] == "-"))
         ].index
         if del_ranges.any():
             del_ranges = ranges(del_ranges)
@@ -507,7 +514,8 @@ def aln_clean(aln_df, gap=10):
                             del_range[0]: del_range[1], "consensus"
                         ] = aln_df.loc[del_range[0]: del_range[1], "ref"].values
                     else:
-                        aln_df.loc[del_range[0]                                   : del_range[1], "consensus"] = "N"
+                        aln_df.loc[del_range[0]
+                            : del_range[1], "consensus"] = "N"
 
     return aln_df, u_range
 
