@@ -1012,7 +1012,13 @@ def run(sa_ab1, asf, outd, tab, ss, rf, ci, gap, n3, idb):  # , fa, asb, al, bsc
                         "Expect only one."
                         " Exiting."
                     )
-                fout.write(f">{rec.id}\n{rec.seq}\n")
+                seq_desc = rec.description.split()
+                seq = rec.seq
+                if len(seq_desc) == 3 and seq_desc[1] == "CDS":
+                    seq = seq[int(seq_desc[2]):]
+
+                fout.write(f">{rec.id}\n{seq}\n")
+
             if not seq_count:
                 exit(
                     f"{rf} contains 0 (zero) sequence. " "Expect only one." " Exiting."
