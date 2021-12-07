@@ -1,28 +1,47 @@
 # SARS-CoV-2 Sequencing: Merge Sanger
 
-The script seqpatcher.py integrates the sanger sequenced SARS-CoV-2 S-gene segment into the corresponding HTS based SARS-CoV-2 genome assembly.
+The script seqpatcher.py integrates the nucleotides sequenced using Sanger platform into the corresponding HTS based (**SARS-CoV-2**) genome assembly.
+
+<!--The script seqpatcher.py integrates the Sanger sequenced segment into the corresponding HTS based assembled incomplete genomes.-->
 
 # Dependencies
 
 ## External (non-Python)
 
 - [MUSCLE](https://www.drive5.com/muscle/downloads.htm)
+  - To perform multiple sequence alignment
 - [BLAT](https://hgdownload.soe.ucsc.edu/admin/exe/)
+  - To query sequence location in the genome
 
-Both the tools can be either be downloaded from provided links or installed using bioconda or ubuntu repositories. Tools must be in system the path, accessible via terminal.
+Both the tools can either be downloaded from provided links, or installed using bioconda or ubuntu repositories. Tools must be in system the path, accessible via terminal.
 
-## Python modules
+### Anaconda command
+
+```bash
+conda install blat muscle
+```
+
+### Ubuntu command
+
+Note: Only system administrators are allowed.
+
+```bash
+apt install blat muscle
+```
+
+## Python (v3.6+) modules
 
 - pandas==1.2.4
+- numpy==1.19.1
 - biopython==1.78
 - click==7.1.2
 
-### installation
+### Installation
 
 - Install dependencies using `pip install -r requirements.txt`, download `seqpatcher.py` in your working directory and execute as instructed in [Execution](#execution) section.
-- Install using `pip install git+https://github.com/krisp-kwazulu-natal/seqPatcher` or `git clone https://github.com/krisp-kwazulu-natal/seqPatcher && cd seqPatcher && python setup.py install`. `seqpatcher.py` should be installed in system path.
+- Install using `pip install git+https://github.com/krisp-kwazulu-natal/seqPatcher` or `git clone https://github.com/krisp-kwazulu-natal/seqPatcher && cd seqPatcher && python setup.py install`. `seqpatcher.py` should be installed in system path and accessible from command-line terminal.
 
-## File and sequence naming
+## File and sequence naming convention.
 
 1. File name or sample name must not have special characters.
 2. Assembly files should be written as <sample_name>.fasta. Sequence's name should be the same as <sample_name>.
@@ -67,10 +86,26 @@ Options:
   -x, --indel-selction [del|ins|both]
                                   Replace Insertion, Deletion or Both
                                   [default: del]
+  -m, --allow-ambi-nuc BOOLEAN      Allow ambigious nucleotide integration,
+                                  if present in both forward and reverse
+                                  sequences. Else nucleotide will be calculated.
+                                  [default: False]
+  -M, --ambigious-base-table BOOLEAN
+                                  Generate table of ambigious nucletide in
+                                  reads and their replacement in concestion
+                                  alongth with the position in consesus
+                                  [default: False]
 
   --version                       Show the version and exit.
   --help                          Show this message and exit.
 ```
+
+## Analysis requiremenrs
+
+1. HTS assembled genome consisting missing segments
+2. Reference for missing segment overlapping >50nt on either side of missing area in the HTS assembly. Explain in it is it is CDS and reading frame. If information in not included, should be
+   considered as non-coding.
+3. Sanger ab1 file (forward, reverse or both), or fasta file generated using sanger ab1 files.
 
 <a name="execution" />
 
@@ -89,8 +124,12 @@ Options:
 # Base selection
 
 - **Note**: Below cases are valid when InDel are smaller than 10 and not multiple of three
+- If average peak value for given ab1 sequence less than 50, the script will throw a warnings related to that file.
+- If it is not reported in the reference file that it is a coding region, codons will not be considered. Zero based index. Example [[Example_CoVid_S_Gene.fasta](include github link)
 
-## Paired ab1
+## Paired ab1 - Preferred
+
+If ambiguious bases are not the same, intersection of nucleotides representing ambigious bases will be considered. In case of no overlap, ambious based represented by union will be considered.
 
 InDels muliple of 3 nucleotides can be permitted else below rule will be applied.
 
@@ -107,7 +146,7 @@ InDels muliple of 3 nucleotides can be permitted else below rule will be applied
 | Base A | Base Ambi  | Base Ambi  | Single common base in Ambi bases (excluding Base A) else Base A |
 | Base A | Base B     | Base C     | Base A                                                          |
 
-## Single ab1
+## Single ab1 - Not Preferred
 
 | Reference | Forward/Reverse | Selected     |
 | --------- | --------------- | ------------ |
@@ -116,7 +155,7 @@ InDels muliple of 3 nucleotides can be permitted else below rule will be applied
 | Base A    | Base B          | Base B       |
 | Base A    | Ambi            | highest peak |
 
-## Single Fasta
+## Single Fasta - Preferred
 
 | Reference | FastaNucleotides | Selected |
 | --------- | ---------------- | -------- |
