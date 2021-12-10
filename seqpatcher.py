@@ -1213,9 +1213,10 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-s",
     "--sanger-ab1",
     "sa_ab1",
-    help="ab1 folder or sanger sequence file",
+    help="Folder containing Sanger sequencing trace files or Fasta files"
+    " generated from trace files.",
     type=str,
-    default="sanger_ab1",
+    default="ab1",
     show_default=True,
 )  # Convert this to folder
 # "/home/devil/Documents/San/Corona/Merging/Sanger/12April2021"
@@ -1226,7 +1227,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-a",
     "-assemblies-foder",
     "asf",
-    help="Assemblies folder containing fasta files",
+    help="Folder containing HTS generate incomplete assembly Fasta files",
     type=str,
     default="assemblies",
     show_default=True,
@@ -1235,7 +1236,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-o",
     "--out-dir",
     "outd",
-    help="Output Folder",
+    help="Result output Folder",
     type=str,
     default="Results",
     show_default=True,
@@ -1244,7 +1245,8 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-t",
     "--tab",
     "tab",
-    help="CSV file for overlapping assemblies and sanger ids." " If not given, stdout.",
+    help="CSV file for overlapping assemblies and Sanger IDs."
+    " If not specified, stdout.",
     type=str,
     default=None,
     show_default=True,
@@ -1253,7 +1255,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-O",
     "--output-fasta",
     "ss",
-    help="Sanger output fasta from ab1",
+    help="Ouput file name for Fasta from sanger ab1",
     type=str,
     default=None,
     show_default=True,
@@ -1262,7 +1264,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-R",
     "--ref-gene-fasta-file",
     "rf",
-    help="Refence gene file in fasta format",
+    help="Refence gene in fasta format",
     type=str,
     default=None,
     show_default=True,
@@ -1292,7 +1294,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-c",
     "--clean-intermediate",
     "ci",
-    help="Remove intermediate file",
+    help="Remove intermediate files",
     type=bool,
     default=True,
     show_default=True,
@@ -1301,7 +1303,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-g",
     "--gap-allowed",
     "gap",
-    help="Gap Allowed between aligned fragment to consider the region continuous",
+    help="Minimum gap length between aligned fragment to consider the alignment continuous",
     type=int,
     default=10,
     show_default=True,
@@ -1310,7 +1312,7 @@ def integrate_in_assembly(outputfold, tmp_fold, sample_id):
     "-3",
     "--only-3-nuc",
     "n3",
-    help="Allow  3 nucleotide InDels else replace with reference nucleotides",
+    help="Allow multiple 3 nucleotide InDels else replace with reference nucleotides or Ns  ",
     type=bool,
     default=True,
     show_default=True,
@@ -1397,7 +1399,7 @@ def run(
         rf = None
 
     # tmp_fold = "tmp"
-    tmp_fold = "tmp"  # tmf.mkdtemp()
+    tmp_fold = tmf.mkdtemp()
 
     # ----------Housekeeping----------------
     # Creating temporary  files and folders
